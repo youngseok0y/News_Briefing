@@ -6,14 +6,15 @@ import json
 from datetime import datetime
 import time
 from scraper import NewsScraper
-from utils import get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, upload_to_drive, fetch_nyt_newsletter
+from utils import get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, upload_to_drive, fetch_nyt_newsletter, list_drive_files, download_drive_file
 
 # ==========================================
 # 1. 설정 (사용자 정보 입력)
 # ==========================================
 # 실제 서비스 시 Streamlit Secrets이나 환경변수 사용 권장
-GEMINI_API_KEY = "AIzaSyDe4P6W9wuYo2OFvsOhW6Idth_3_-20Qc0"
-DRIVE_FOLDER_ID = "1VZ2GdtdoXCZFnhuDlYqj2DUoMKQZrlCF"
+# Streamlit Secrets 우선 사용 (Cloud 배포 시 안전함)
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "AIzaSyDe4P6W9wuYo2OFvsOhW6Idth_3_-20Qc0")
+DRIVE_FOLDER_ID = st.secrets.get("DRIVE_FOLDER_ID", "1VZ2GdtdoXCZFnhuDlYqj2DUoMKQZrlCF")
 SERVICE_ACCOUNT_FILE = 'credentials.json' 
 
 try:
@@ -71,8 +72,34 @@ target_date = get_latest_date()
 save_path = os.path.join("daily", f"{target_date}_articles.json")
 
 # 사이드바 내부에서 한 번 더 접을 수 있도록 expander 위젯 사용
-with st.sidebar.expander("🛠️ 데이터 수집/업로드 컨트롤", expanded=True):
-    if st.button("🔄 오늘자 신문 데이터 로드/스크랩"):
+with st.sidebar.expander("🛠️ 데이터 수집 및 자동화 결과", expanded=True):
+    # --- 추가: 클라우드 자동화 결과 불러오기 ---
+    if st.button("☁️ 최신 자동화 리포트 불러오기 (Drive)"):
+        with st.spinner("구글 드라이브에서 최신 파일을 찾는 중..."):
+            files = list_drive_files(DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            if not files:
+                st.error("드라이브에 저장된 파일이 없거나 접근할 수 없습니다.")
+            else:
+                # 가장 최신 JSON(데이터)과 TXT(리포트) 찾기
+                latest_json = next((f for f in files if f['name'].endswith('_articles.json')), None)
+                latest_txt = next((f for f in files if f['name'].endswith('_summary.txt')), None)
+                
+                if latest_json:
+                    json_content = download_drive_file(latest_json['id'], SERVICE_ACCOUNT_FILE)
+                    if json_content:
+                        st.session_state['data'] = json.loads(json_content)
+                        st.session_state['last_loaded'] = latest_json['name']
+                        st.toast(f"✅ 데이터 로드 완료: {latest_json['name']}", icon="📥")
+                        
+                if latest_txt:
+                    txt_report = download_drive_file(latest_txt['id'], SERVICE_ACCOUNT_FILE)
+                    if txt_report:
+                        # 분석 리포트 캐시 등에 저장하거나 바로 표시 가능 (여기서는 우선 성공 알림만)
+                        st.toast(f"✅ 요약 리포트 확인 완료: {latest_txt['name']}", icon="📄")
+    
+    st.markdown("---")
+    
+    if st.button("🔄 오늘자 신문 데이터 로컬 로드/스크랩"):
         if os.path.exists(save_path):
             with open(save_path, 'r', encoding='utf-8') as f:
                 st.session_state['data'] = json.load(f)

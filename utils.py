@@ -11,6 +11,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 import pickle
 import base64
 from bs4 import BeautifulSoup
+try:
+    import streamlit as st
+except ImportError:
+    st = None # CLI 환경 대응
 
 def get_latest_date():
     """6시 이전이면 전날짜 반환"""
@@ -46,11 +50,28 @@ def get_google_creds(oauth_client_file='client_secret.json'):
     ]
     creds = None
     
-    if os.path.exists('token.pickle'):
+    # 1. Streamlit Secrets 확인 (Cloud 배포용)
+    if st and "GOOGLE_TOKEN_PICKLE_BASE64" in st.secrets:
+        try:
+            token_data = base64.b64decode(st.secrets["GOOGLE_TOKEN_PICKLE_BASE64"])
+            creds = pickle.loads(token_data)
+        except Exception as e:
+            print(f"Secrets Token Error: {e}")
+
+    # 2. 환경 변수 확인 (GitHub Actions용)
+    if not creds and os.getenv("GOOGLE_TOKEN_PICKLE_BASE64"):
+        try:
+            token_data = base64.b64decode(os.getenv("GOOGLE_TOKEN_PICKLE_BASE64"))
+            creds = pickle.loads(token_data)
+        except Exception as e:
+            print(f"Env Token Error: {e}")
+
+    # 3. 로컬 파일 확인 (Local Dev용)
+    if not creds and os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
             creds = pickle.load(token)
             
-    # 기존 토큰의 스코프가 현재 요구하는 스코프와 다른지 확인
+    # 기존 토큰의 스코프 확인 및 갱신
     if creds and hasattr(creds, 'scopes'):
         if not all(scope in creds.scopes for scope in SCOPES):
             creds = None # 재인증 유도
@@ -59,25 +80,50 @@ def get_google_creds(oauth_client_file='client_secret.json'):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not os.path.exists(oauth_client_file):
+            # OAuth 클라이언트 파일 정보 가져오기 (Secrets/Env/File 순)
+            client_config = None
+            if st and "GOOGLE_CLIENT_SECRET_JSON" in st.secrets:
+                client_config = json.loads(st.secrets["GOOGLE_CLIENT_SECRET_JSON"])
+            elif os.getenv("GOOGLE_CLIENT_SECRET_JSON"):
+                client_config = json.loads(os.getenv("GOOGLE_CLIENT_SECRET_JSON"))
+            elif os.path.exists(oauth_client_file):
+                with open(oauth_client_file, 'r') as f:
+                    client_config = json.load(f)
+
+            if not client_config:
                 return None
-            flow = InstalledAppFlow.from_client_secrets_file(oauth_client_file, SCOPES)
+
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
             creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+            
+        # 새로운 토큰 저장 (로컬 환경일 때만)
+        if not st or not st.secrets:
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+                
     return creds
 
 def get_drive_service(service_account_file, oauth_client_file='client_secret.json'):
-    # 일반 OAuth 우선
+    # 1. 일반 OAuth 우선
     creds = get_google_creds(oauth_client_file)
     if creds:
         return build('drive', 'v3', credentials=creds)
     
-    # 서비스 계정 (하위 호환)
-    if os.path.exists(service_account_file):
+    # 2. 서비스 계정 (Secrets/Env에서 정보 가져오기)
+    sa_info = None
+    if st and "GCP_SERVICE_ACCOUNT" in st.secrets:
+        sa_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+    elif os.getenv("GCP_SERVICE_ACCOUNT"):
+        sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT"))
+    elif os.path.exists(service_account_file):
+        with open(service_account_file, 'r') as f:
+            sa_info = json.load(f)
+
+    if sa_info:
         SCOPES = ['https://www.googleapis.com/auth/drive.file']
-        creds = service_account.Credentials.from_service_account_file(service_account_file, scopes=SCOPES)
+        creds = service_account.Credentials.from_service_account_info(sa_info, scopes=SCOPES)
         return build('drive', 'v3', credentials=creds)
+        
     return None
 
 def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
@@ -192,3 +238,33 @@ def upload_to_drive(content: str, filename: str, folder_id: str, service_account
     except Exception as e:
         print(f"Drive Upload Error: {e}")
         return str(e)
+
+def list_drive_files(folder_id, service_account_file: str = 'credentials.json'):
+    """지정된 폴더 내의 파일 목록을 최신순으로 반환"""
+    try:
+        service = get_drive_service(service_account_file)
+        if not service: return []
+        
+        query = f"'{folder_id}' in parents and trashed = false"
+        results = service.files().list(
+            q=query, 
+            pageSize=10, 
+            fields="files(id, name, createdTime)",
+            orderBy="createdTime desc"
+        ).execute()
+        return results.get('files', [])
+    except Exception as e:
+        print(f"Drive List Error: {e}")
+        return []
+
+def download_drive_file(file_id, service_account_file: str = 'credentials.json'):
+    """파일 ID로 내용을 다운로드하여 문자열로 반환"""
+    try:
+        service = get_drive_service(service_account_file)
+        if not service: return None
+        
+        content = service.files().get_media(fileId=file_id).execute()
+        return content.decode('utf-8')
+    except Exception as e:
+        print(f"Drive Download Error: {e}")
+        return None
