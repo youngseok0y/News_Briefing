@@ -47,3 +47,5 @@ jobs:
         git add daily/*.json daily/*.txt
         git commit -m "Add daily news reports: $(date +'%Y-%m-%d')" || echo "No changes to commit"
         git push
+        git pull --rebase origin main
+        git push origin main
