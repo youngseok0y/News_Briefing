@@ -78,15 +78,18 @@ def run_automation():
     print("🇺🇸 NYT 뉴스레터 가져오는 중...")
     nyt_content = fetch_nyt_newsletter()
     nyt_report = ""
-    if "Error" not in nyt_content:
+    if nyt_content and "Error" not in nyt_content:
         prompt = f"다음은 오늘자 NYT 뉴스레터야. 한국어로 전문 번역하고 이미지 태그는 유지해줘:\n\n{nyt_content}"
         try:
             res = model.generate_content(prompt)
             nyt_report = f"\n\n[NYT News Letter]\n\n{res.text}"
             print("✅ NYT 번역 완료.")
-        except:
-            print("⚠️ NYT 번역 실패.")
+        except Exception as e:
+            nyt_report = f"\n\n⚠️ NYT 번역 실패 (Gemini API 오류): {e}"
+            print(f"❌ NYT 번역 실패: {e}")
     else:
+        # 뉴스레터 수집 실패 시 안내 문구 추가
+        nyt_report = f"\n\n⚠️ NYT 미수집: {nyt_content}"
         print(f"⚠️ NYT 미수집: {nyt_content}")
 
     # 6. 구글 드라이브 업로드용 텍스트 병합

@@ -135,13 +135,13 @@ def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
             
         service = build('gmail', 'v1', credentials=creds)
         
-        # NYT 'The Morning' 뉴스레터 검색
-        query = 'from:nytdirect@nytimes.com subject:"The Morning"'
+        # NYT 'The Morning' 뉴스레터 검색 (제목 쿼리 완화: subject:Morning)
+        query = 'from:nytdirect@nytimes.com subject:Morning'
         results = service.users().messages().list(userId='me', q=query, maxResults=1).execute()
         messages = results.get('messages', [])
         
         if not messages:
-            return "Error: NYT 뉴스레터를 찾을 수 없습니다."
+            return "Error: NYT 뉴스레터를 찾을 수 없습니다. (보낸 사람: nytdirect@nytimes.com, 제목: Morning 쿼리 결과 없음)"
             
         msg = service.users().messages().get(userId='me', id=messages[0]['id']).execute()
         

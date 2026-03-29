@@ -40,6 +40,8 @@ jobs:
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        GOOGLE_TOKEN_PICKLE_BASE64: ${{ secrets.GOOGLE_TOKEN_PICKLE_BASE64 }}
+        GOOGLE_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
       run: python automate.py
 
     - name: Commit and Push changes
