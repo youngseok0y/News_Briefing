@@ -48,7 +48,18 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # 1. 서버의 최신 상태정보만 가져오기
+        git fetch origin main
+        
+        # 2. 로컬 브랜치를 서버의 최신 위치로 '소프트 리셋' (생성된 리포트 파일들은 그대로 유지됨)
+        git reset --soft origin/main
+        
+        # 3. 새로 생성된 리포트들을 스테이징 (-f 옵션으로 .gitignore 무시)
         git add -f daily/*.json daily/*.txt
+        
+        # 4. 서버 최신 상태 위에 새로운 커밋 생성
         git commit -m "Add daily news reports: $(date +'%Y-%m-%d')" || echo "No changes to commit"
-        git pull --rebase -Xtheirs origin main
+        
+        # 5. 그대로 푸시 (이미 서버 최신 상태 위라 충돌이 거의 발생하지 않음)
         git push origin main
