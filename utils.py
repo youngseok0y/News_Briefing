@@ -51,13 +51,12 @@ def get_google_creds(oauth_client_file='client_secret.json'):
     creds = None
     
     # 1. Streamlit Secrets 확인 (Cloud 배포용)
-    if st:
+    if st and "GOOGLE_TOKEN_PICKLE_BASE64" in st.secrets:
         try:
-            if "GOOGLE_TOKEN_PICKLE_BASE64" in st.secrets:
-                token_data = base64.b64decode(st.secrets["GOOGLE_TOKEN_PICKLE_BASE64"])
-                creds = pickle.loads(token_data)
-        except Exception:
-            pass # Streamlit 외부(CLI/GitHub Actions)일 때 예외 발생 무시
+            token_data = base64.b64decode(st.secrets["GOOGLE_TOKEN_PICKLE_BASE64"])
+            creds = pickle.loads(token_data)
+        except Exception as e:
+            print(f"Secrets Token Error: {e}")
 
     # 2. 환경 변수 확인 (GitHub Actions용)
     if not creds and os.getenv("GOOGLE_TOKEN_PICKLE_BASE64"):
@@ -83,14 +82,9 @@ def get_google_creds(oauth_client_file='client_secret.json'):
         else:
             # OAuth 클라이언트 파일 정보 가져오기 (Secrets/Env/File 순)
             client_config = None
-            if st:
-                try:
-                    if "GOOGLE_CLIENT_SECRET_JSON" in st.secrets:
-                        client_config = json.loads(st.secrets["GOOGLE_CLIENT_SECRET_JSON"])
-                except Exception:
-                    pass
-            
-            if not client_config and os.getenv("GOOGLE_CLIENT_SECRET_JSON"):
+            if st and "GOOGLE_CLIENT_SECRET_JSON" in st.secrets:
+                client_config = json.loads(st.secrets["GOOGLE_CLIENT_SECRET_JSON"])
+            elif os.getenv("GOOGLE_CLIENT_SECRET_JSON"):
                 client_config = json.loads(os.getenv("GOOGLE_CLIENT_SECRET_JSON"))
             elif os.path.exists(oauth_client_file):
                 with open(oauth_client_file, 'r') as f:
@@ -117,14 +111,9 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
     
     # 2. 서비스 계정 (Secrets/Env에서 정보 가져오기)
     sa_info = None
-    if st:
-        try:
-            if "GCP_SERVICE_ACCOUNT" in st.secrets:
-                sa_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
-        except Exception:
-            pass
-            
-    if not sa_info and os.getenv("GCP_SERVICE_ACCOUNT"):
+    if st and "GCP_SERVICE_ACCOUNT" in st.secrets:
+        sa_info = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+    elif os.getenv("GCP_SERVICE_ACCOUNT"):
         sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT"))
     elif os.path.exists(service_account_file):
         with open(service_account_file, 'r') as f:
