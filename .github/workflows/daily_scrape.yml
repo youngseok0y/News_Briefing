@@ -50,5 +50,5 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add -f daily/*.json daily/*.txt
         git commit -m "Add daily news reports: $(date +'%Y-%m-%d')" || echo "No changes to commit"
-        git pull --rebase origin main
+        git pull --rebase -Xtheirs origin main
         git push origin main
