@@ -7,7 +7,11 @@ from datetime import datetime, timezone, timedelta
 import time
 import base64
 from scraper import NewsScraper
-from utils import get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, upload_to_drive, fetch_nyt_newsletter, list_drive_files, download_drive_file, KST
+from utils import (
+    get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, 
+    upload_to_drive, fetch_nyt_newsletter, list_drive_files, 
+    download_drive_file, KST, save_and_upload_json, find_and_download_json
+)
 
 # ==========================================
 # 1. 설정 (사용자 정보 입력)
@@ -210,18 +214,31 @@ save_path = os.path.join("daily", f"{target_date}_articles.json")
 
 # Sidebar Expander for technical ops
 with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True):
-    if st.button("☁️ 클라우드 리포트 동기화"):
-        with st.spinner("동기화 중..."):
-            files = list_drive_files(DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-            if files:
-                latest_json = next((f for f in files if f['name'].endswith('_articles.json')), None)
-                if latest_json:
-                    json_content = download_drive_file(latest_json['id'], SERVICE_ACCOUNT_FILE)
-                    if json_content:
-                        st.session_state['data'] = json.loads(json_content)
-                        st.toast(f"✅ 동기화 완료: {latest_json['name']}", icon="📥")
-            else:
-                st.error("파일을 찾을 수 없습니다.")
+    if st.button("☁️ 클라우드 리포트 동기화", help="오늘 날짜의 모든 분석 결과(NYT, 종합분석 등)를 드라이브에서 가져옵니다."):
+        with st.spinner("최신 데이터 동기화 중..."):
+            # 1. 기사 목록 동기화
+            articles_json = f"{target_date}_articles.json"
+            data = find_and_download_json(articles_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            if data:
+                st.session_state['data'] = data
+                st.toast("✅ 기사 목록 동기화 완료")
+
+            # 2. NYT 번역 동기화
+            nyt_json = f"{target_date}_nyt.json"
+            nyt_data = find_and_download_json(nyt_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            if nyt_data:
+                st.session_state['nyt_text'] = nyt_data.get('raw', '')
+                st.session_state['nyt_translation'] = nyt_data.get('translation', '')
+                st.toast("✅ NYT 번역본 로드 완료")
+
+            # 3. 종합 분석 동기화
+            insight_json = f"{target_date}_insight.json"
+            insight_data = find_and_download_json(insight_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            if insight_data:
+                st.session_state['final_report'] = insight_data.get('report', '')
+                st.toast("✅ 종합 인사이트 로드 완료")
+            
+            st.session_state['last_sync'] = datetime.now(KST).strftime("%H:%M:%S")
 
     if st.button("🔄 오늘자 신문 강제 수집"):
         with st.spinner("AI 수집 엔진 가동 중..."):
@@ -293,13 +310,20 @@ with tab1:
                 try:
                     res = model.generate_content(prompt)
                     st.session_state['nyt_translation'] = res.text
-                    st.toast("✅ 고품격 번역 완료!", icon="📜")
+                    
+                    # [Persistence] Save to Drive
+                    nyt_data = {
+                        "raw": st.session_state['nyt_text'],
+                        "translation": st.session_state['nyt_translation'],
+                        "date": target_date
+                    }
+                    save_and_upload_json(nyt_data, f"{target_date}_nyt.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                    st.toast("✅ 번역 완료 및 클라우드 저장!", icon="☁️")
                 except Exception as e:
                     st.error(f"번역 실패: {e}")
                     
     if st.session_state['nyt_translation']:
         st.markdown("---")
-        # Custom container for newspaper feel
         st.markdown(f'<div style="background: rgba(255,255,255,0.02); padding: 2rem; border-radius: 20px; border: 1px solid var(--glass-border);">{st.session_state["nyt_translation"]}</div>', unsafe_allow_html=True)
 
 with tab2:
@@ -324,9 +348,17 @@ with tab2:
                 prompt = f"다음 기사들의 제목과 본문을 읽고, 오늘 대한민국의 주요 의제를 정의한 뒤 신문사별(보수/진보 등) 논조 차이를 분석해줘. 마크다운으로 가독성 좋게 작성해:\n\n{full_context}"
                 try:
                     res = model.generate_content(prompt)
-                    st.markdown(f'<div style="background: linear-gradient(to right, #0F172A, #1E293B); padding: 2rem; border-radius: 20px; border-left: 5px solid var(--primary);">{res.text}</div>', unsafe_allow_html=True)
+                    st.session_state['final_report'] = res.text
+                    
+                    # [Persistence] Save to Drive
+                    insight_data = {"report": res.text, "date": target_date}
+                    save_and_upload_json(insight_data, f"{target_date}_insight.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                    st.toast("✅ 분석 완료 및 클라우드 저장!", icon="☁️")
                 except Exception as e:
                     st.error("분석 실패")
+
+    if st.session_state.get('final_report'):
+        st.markdown(f'<div style="background: linear-gradient(to right, #0F172A, #1E293B); padding: 2rem; border-radius: 20px; border-left: 5px solid var(--primary);">{st.session_state["final_report"]}</div>', unsafe_allow_html=True)
 
 with tab3:
     st.subheader("📅 개별 기사 보관소")
