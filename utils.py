@@ -11,13 +11,16 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 import pickle
 import base64
 from bs4 import BeautifulSoup
-try:
-    import streamlit as st
-except ImportError:
-    st = None # CLI 환경 대응
-    
 # 한국 표준시 (KST, UTC+9) 설정
 KST = timezone(timedelta(hours=9))
+
+# Streamlit 데코레이터 안전 처리 (CLI 대응)
+def st_cache_data_safe(ttl=None, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+cache_data = st.cache_data if st is not None else st_cache_data_safe
 
 def get_latest_date():
     """6시 이전이면 전날짜 반환 (KST 기준)"""
@@ -140,7 +143,7 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
         
     return None
 
-@st.cache_data(ttl=3600)
+@cache_data(ttl=3600)
 def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
     """지메일에서 NYT 'The Morning' 뉴스레터 최신 1건을 가져와 텍스트로 파싱"""
     try:
@@ -290,7 +293,7 @@ def save_and_upload_json(data: dict, filename: str, folder_id: str, service_acco
     save_to_json(data, filepath)
     return upload_to_drive(json.dumps(data, ensure_ascii=False), filename, folder_id, service_account_file)
 
-@st.cache_data(ttl=600)
+@cache_data(ttl=600)
 def find_and_download_json(filename: str, folder_id: str, service_account_file: str = 'credentials.json'):
     """드라이브에서 파일명으로 찾아 JSON 데이터 반환"""
     files = list_drive_files(folder_id, service_account_file)
