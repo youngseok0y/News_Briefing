@@ -6,12 +6,8 @@ import json
 from datetime import datetime, timezone, timedelta
 import time
 import base64
+import utils
 from scraper import NewsScraper
-from utils import (
-    get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, 
-    upload_to_drive, fetch_nyt_newsletter, list_drive_files, 
-    download_drive_file, KST, save_and_upload_json, find_and_download_json
-)
 
 # ==========================================
 # 1. 설정 (사용자 정보 입력)
@@ -209,23 +205,23 @@ else:
 
 st.sidebar.header("🕹️ 컨트롤 센터")
 
-target_date = get_latest_date()
+target_date = utils.get_latest_date()
 save_path = os.path.join("daily", f"{target_date}_articles.json")
 
 # Sidebar Expander for technical ops
-with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True):
+with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=False):
     if st.button("☁️ 클라우드 리포트 동기화", help="오늘 날짜의 모든 분석 결과(NYT, 종합분석 등)를 드라이브에서 가져옵니다."):
         with st.spinner("최신 데이터 동기화 중..."):
             # 1. 기사 목록 동기화
             articles_json = f"{target_date}_articles.json"
-            data = find_and_download_json(articles_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            data = utils.find_and_download_json(articles_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
             if data:
                 st.session_state['data'] = data
                 st.toast("✅ 기사 목록 동기화 완료")
 
             # 2. NYT 번역 동기화
             nyt_json = f"{target_date}_nyt.json"
-            nyt_data = find_and_download_json(nyt_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            nyt_data = utils.find_and_download_json(nyt_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
             if nyt_data:
                 st.session_state['nyt_text'] = nyt_data.get('raw', '')
                 st.session_state['nyt_translation'] = nyt_data.get('translation', '')
@@ -233,12 +229,12 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
 
             # 3. 종합 분석 동기화
             insight_json = f"{target_date}_insight.json"
-            insight_data = find_and_download_json(insight_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+            insight_data = utils.find_and_download_json(insight_json, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
             if insight_data:
                 st.session_state['final_report'] = insight_data.get('report', '')
                 st.toast("✅ 종합 인사이트 로드 완료")
             
-            st.session_state['last_sync'] = datetime.now(KST).strftime("%H:%M:%S")
+            st.session_state['last_sync'] = datetime.now(utils.KST).strftime("%H:%M:%S")
 
     if st.button("🔄 오늘자 신문 강제 수집"):
         with st.spinner("AI 수집 엔진 가동 중..."):
@@ -255,15 +251,15 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
                     item['등록일시'] = date
                     progress_bar.progress((idx + 1) / len(unique_data), text=f"수집 중 ({idx+1}/{len(unique_data)})")
                 st.session_state['data'] = unique_data
-                save_to_json(st.session_state['data'], save_path)
+                utils.save_to_json(st.session_state['data'], save_path)
                 st.toast("✅ 수집 및 분석 준비 완료!", icon="🎉")
-                
+
     st.markdown("---")
     
     if st.button("📤 구글 드라이브 업로드 (NotebookLM)"):
         if st.session_state['data']:
             with st.spinner("드라이브에 업로드 중..."):
-                txt_content = f"오늘의 전체 지면 기사 원문 ({get_latest_date()})\n" + "="*50 + "\n\n"
+                txt_content = f"오늘의 전체 지면 기사 원문 ({utils.get_latest_date()})\n" + "="*50 + "\n\n"
                 for d in st.session_state['data']:
                     grade = d.get('중요도등급', '하')
                     txt_content += f"[{grade}] [{d['신문사']}-{d['지면']}] {d['제목']}\n"
@@ -273,8 +269,8 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
                     txt_content += "-"*50 + "\n\n"
                 
                 txt_path = os.path.join("daily", f"{target_date}_summary.txt")
-                save_to_txt(txt_content, txt_path)
-                fid = upload_to_drive(txt_content, os.path.basename(txt_path), DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                utils.save_to_txt(txt_content, txt_path)
+                fid = utils.upload_to_drive(txt_content, os.path.basename(txt_path), DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
                 if fid and "error" not in str(fid).lower():
                     st.toast(f"✅ 드라이브 업로드 완료!", icon="☁️")
                 else: st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
@@ -282,7 +278,7 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
 
 # Main Header
 st.title("🗞️ AI 데일리 지면 신문 서비스")
-now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+now_kst = datetime.now(utils.KST).strftime("%Y-%m-%d %H:%M:%S")
 st.caption(f"🕒 현재 동기화 시간 (KST): {now_kst} | 프리미엄 슬릭 다크 에디션")
 
 # Tabs
@@ -298,7 +294,7 @@ with tab1:
     
     if st.button("📩 최신 뉴스레터 번역 실행"):
         with st.spinner("NYT 이메일 로드 중..."):
-            raw_email = fetch_nyt_newsletter()
+            raw_email = utils.fetch_nyt_newsletter()
             if "Error" in raw_email:
                 st.error(f"수집 실패: {raw_email}")
             else:
@@ -317,7 +313,7 @@ with tab1:
                         "translation": st.session_state['nyt_translation'],
                         "date": target_date
                     }
-                    save_and_upload_json(nyt_data, f"{target_date}_nyt.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                    utils.save_and_upload_json(nyt_data, f"{target_date}_nyt.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
                     st.toast("✅ 번역 완료 및 클라우드 저장!", icon="☁️")
                 except Exception as e:
                     st.error(f"번역 실패: {e}")
@@ -341,7 +337,7 @@ with tab2:
             full_context = ""
             for n in imp_news:
                 body = n.get('기사내용', '')
-                trimmed_body = trim_text(body, max_len=1500)
+                trimmed_body = utils.trim_text(body, max_len=1500)
                 full_context += f"[{n['신문사']}] {n['제목']}\n{trimmed_body}\n\n"
             
             with st.spinner("Gemini AI가 신문사별 논조를 비교 중입니다..."):
@@ -352,7 +348,7 @@ with tab2:
                     
                     # [Persistence] Save to Drive
                     insight_data = {"report": res.text, "date": target_date}
-                    save_and_upload_json(insight_data, f"{target_date}_insight.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                    utils.save_and_upload_json(insight_data, f"{target_date}_insight.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
                     st.toast("✅ 분석 완료 및 클라우드 저장!", icon="☁️")
                 except Exception as e:
                     st.error("분석 실패")
@@ -398,7 +394,7 @@ with tab3:
                     with st.spinner("본문 심층 분석 중..."):
                         body = row.get('기사내용', '')
                         try:
-                            res = model.generate_content(f"이 기사의 핵심 요약과 독자들에게 전하는 시사점을 간단히 작성해줘:\n\n{trim_text(body)}")
+                            res = model.generate_content(f"이 기사의 핵심 요약과 독자들에게 전하는 시사점을 간단히 작성해줘:\n\n{utils.trim_text(body)}")
                             st.markdown(f'<div style="background: rgba(88,225,255,0.05); padding: 1rem; border-radius: 10px; font-size: 0.9rem; border: 1px dashed var(--primary); margin-top: 5px;">{res.text}</div>', unsafe_allow_html=True)
                         except: st.error("분석 불가")
             
