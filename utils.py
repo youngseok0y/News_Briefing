@@ -68,8 +68,8 @@ def get_google_creds(oauth_client_file='client_secret.json'):
                 token_data = base64.b64decode(st.secrets["GOOGLE_TOKEN_PICKLE_BASE64"])
                 creds = pickle.loads(token_data)
         except Exception:
-            pass # Streamlit 외부(CLI/GitHub Actions)일 때 예외 발생 무시
-
+            pass
+    
     # 2. 환경 변수 확인 (GitHub Actions용)
     if not creds and os.getenv("GOOGLE_TOKEN_PICKLE_BASE64"):
         try:
@@ -112,30 +112,36 @@ def get_google_creds(oauth_client_file='client_secret.json'):
 
             # GitHub Actions나 서버 환경 등 브라우저를 열 수 없는 환경인지 체크
             if os.getenv("GITHUB_ACTIONS") or os.getenv("NON_INTERACTIVE"):
-                print("❌ Non-interactive 환경입니다. OAuth 인증(run_local_server)을 건너뜁니다.")
                 return None
                 
             try:
                 flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-                creds = flow.run_local_server(port=0, timeout_seconds=60) # 60초 타임아웃 추가
+                creds = flow.run_local_server(port=0, timeout_seconds=60)
             except Exception as e:
-                print(f"OAuth Flow Error: {e}")
+                print(f"❌ OAuth Flow Error: {e}")
                 return None
             
         # 새로운 토큰 저장 (로컬 환경일 때만)
-        if not st or not st.secrets:
+        is_streamlit_cloud = False
+        try:
+            if st and st.secrets:
+                is_streamlit_cloud = True
+        except Exception:
+            pass
+            
+        if not is_streamlit_cloud:
             with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
                 
     return creds
 
 def get_drive_service(service_account_file, oauth_client_file='client_secret.json'):
-    # 1. 일반 OAuth 우선
+    # 1. 일반 OAuth 우선 (최상위: 개인 계정 쿼터 사용)
     creds = get_google_creds(oauth_client_file)
     if creds:
         return build('drive', 'v3', credentials=creds)
     
-    # 2. 서비스 계정 (Secrets/Env에서 정보 가져오기)
+    # 2. 서비스 계정 (Fallback)
     sa_info = None
     if st:
         try:
@@ -147,12 +153,10 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
     if not sa_info and os.getenv("GCP_SERVICE_ACCOUNT"):
         try:
             sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT").strip())
-            # 필수 필드 자가 진단 추가
             required_fields = ["project_id", "private_key", "client_email", "token_uri"]
             missing = [f for f in required_fields if f not in sa_info]
             if missing:
                 print(f"⚠️ GCP_SERVICE_ACCOUNT JSON에 다음 필드가 누락되었습니다: {missing}")
-                print("💡 '서비스 계정' 키 JSON 전체를 복사했는지 확인해 주세요.")
         except Exception as e:
             print(f"❌ GCP_SERVICE_ACCOUNT 파싱 에러: {e}")
     elif os.path.exists(service_account_file):
@@ -175,18 +179,14 @@ def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
             return "Error: 인증 정보가 없습니다."
             
         service = build('gmail', 'v1', credentials=creds)
-        
-        # NYT 'The Morning' 뉴스레터 검색 (제목 쿼리 완화: subject:Morning)
         query = 'from:nytdirect@nytimes.com subject:Morning'
         results = service.users().messages().list(userId='me', q=query, maxResults=1).execute()
         messages = results.get('messages', [])
         
         if not messages:
-            return "Error: NYT 뉴스레터를 찾을 수 없습니다. (보낸 사람: nytdirect@nytimes.com, 제목: Morning 쿼리 결과 없음)"
+            return "Error: NYT 뉴스레터를 찾을 수 없습니다."
             
         msg = service.users().messages().get(userId='me', id=messages[0]['id']).execute()
-        
-        # 본문 파싱 (Multipart 대응)
         parts = msg['payload'].get('parts', [])
         html_content = ""
         
@@ -195,7 +195,6 @@ def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
             for part in parts:
                 mime_type = part.get('mimeType')
                 body_data = part.get('body', {}).get('data')
-                
                 if mime_type == 'text/html' and body_data:
                     content += base64.urlsafe_b64decode(body_data).decode('utf-8')
                 elif 'parts' in part:
@@ -210,57 +209,34 @@ def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
         if not html_content:
             return "Error: 이메일 본문을 읽을 수 없습니다."
             
-        # HTML에서 텍스트 및 이미지 추출 (레이아웃 보존용)
         soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # 불필요한 태그 제거 (스크립트, 스타일, 네비게이션 등)
         for junk in soup(["script", "style", "nav", "footer"]):
             junk.decompose()
             
-        # 이미지 태그(img)를 렌더링 가능한 형태로 보호하고 나머지는 텍스트로 처리
-        # 광고(Ad), 트래커(Pixel), 아이콘류는 제외하는 필터링 로직 추가
         ad_keywords = ['ad', 'marketing', 'promo', 'pixel', 'logo', 'icon', 'social', 'facebook', 'twitter', 'instagram']
-        
         for img in soup.find_all('img'):
             src = img.get('src', '').lower()
             alt = img.get('alt', '').lower()
             width = img.get('width', '')
             height = img.get('height', '')
-            
-            # 1. 광고 및 트래커 키워드 필터링
             is_ad = any(kw in src or kw in alt for kw in ad_keywords)
-            
-            # 2. 아주 작은 이미지(1x1 트래커 등) 필터링
             is_tiny = (width == '1' or height == '1')
             
             if src and not is_ad and not is_tiny:
-                # 유효한 기사 이미지로 판단됨
                 original_src = img.get('src')
                 original_alt = img.get('alt', 'NYT Image')
-                caption = f"<br><small style='color: gray;'>이미지: {original_alt}</small><br>"
-                img.replace_with(f'\n\n<img src="{original_src}" alt="{original_alt}" style="max-width:100%; border-radius:10px;">\n{caption}\n\n')
+                img.replace_with(f'\n\n<img src="{original_src}" alt="{original_alt}" style="max-width:100%; border-radius:10px;">\n\n')
             else:
-                # 광고나 아이콘은 제거
                 img.decompose()
 
-        # 문단 및 헤더 처리 최적화
         for h in soup.find_all(['h1', 'h2', 'h3', 'h4']):
             h.replace_with(f'\n\n### {h.get_text(strip=True)}\n\n')
-            
         for p in soup.find_all('p'):
             p.replace_with(f'\n\n{p.get_text(strip=True)}\n\n')
 
         clean_text = soup.get_text()
-        
-        # 과도한 줄바꿈 제거 및 정리
-        final_lines = []
-        for line in clean_text.splitlines():
-            line = line.strip()
-            if line:
-                final_lines.append(line)
-        
+        final_lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
         return "\n\n".join(final_lines)
-        
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -269,7 +245,7 @@ def upload_to_drive(content: str, filename: str, folder_id: str, service_account
     try:
         service = get_drive_service(service_account_file)
         if not service:
-            return "Error: credentials.json 또는 client_secret.json 파일이 없습니다."
+            return "Error: 인증 서비스(OAuth/ServiceAccount)를 초기화할 수 없습니다."
             
         file_metadata = {'name': filename, 'parents': [folder_id]}
         media = MediaIoBaseUpload(io.BytesIO(content.encode('utf-8')), mimetype='text/plain')
@@ -279,10 +255,7 @@ def upload_to_drive(content: str, filename: str, folder_id: str, service_account
     except Exception as e:
         error_msg = str(e)
         if "storageQuotaExceeded" in error_msg:
-            print("❌ 구글 드라이브 쿼터 에러 발생!")
-            print("💡 해결 방법: 드라이브 폴더를 서비스 계정 이메일(client_email)과 '공유(편집자 권한)' 하셨는지 확인해 주세요.")
-            return "Error: Storage Quota Exceeded (Check Folder Sharing)"
-        print(f"Drive Upload Error: {e}")
+            return "Error: Storage Quota Exceeded. 서비스 계정 대신 OAuth 인증(token.pickle)을 사용해 주세요."
         return error_msg
 
 def list_drive_files(folder_id, service_account_file: str = 'credentials.json'):
@@ -290,18 +263,9 @@ def list_drive_files(folder_id, service_account_file: str = 'credentials.json'):
     try:
         service = get_drive_service(service_account_file)
         if not service: return []
-        
         query = f"'{folder_id}' in parents and trashed = false"
-        print(f"📂 드라이브 폴더({folder_id}) 내 파일 목록 조회 중...")
-        results = service.files().list(
-            q=query, 
-            pageSize=15, 
-            fields="files(id, name, createdTime)",
-            orderBy="createdTime desc"
-        ).execute()
-        files = results.get('files', [])
-        print(f"✅ 드라이브에서 {len(files)}개의 파일을 발견했습니다.")
-        return files
+        results = service.files().list(q=query, pageSize=15, fields="files(id, name, createdTime)", orderBy="createdTime desc").execute()
+        return results.get('files', [])
     except Exception as e:
         print(f"Drive List Error: {e}")
         return []
@@ -311,7 +275,6 @@ def download_drive_file(file_id, service_account_file: str = 'credentials.json')
     try:
         service = get_drive_service(service_account_file)
         if not service: return None
-        
         content = service.files().get_media(fileId=file_id).execute()
         return content.decode('utf-8')
     except Exception as e:
