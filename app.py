@@ -101,13 +101,23 @@ st.markdown(f"""
         border: 1px solid rgba(255, 215, 0, 0.4);
     }}
 
-    .news-title {{
+    .news-title {
         font-size: 1.1rem;
         font-weight: 600;
         line-height: 1.4;
         margin-bottom: 0.8rem;
         color: #FFFFFF;
-    }}
+    }
+
+    .news-title a {
+        text-decoration: none !important;
+        color: inherit !important;
+        transition: color 0.2s;
+    }
+
+    .news-title a:hover {
+        color: var(--primary) !important;
+    }
 
     .news-meta {{
         font-size: 0.85rem;
@@ -211,6 +221,28 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
                 st.session_state['data'] = unique_data
                 save_to_json(st.session_state['data'], save_path)
                 st.toast("✅ 수집 및 분석 준비 완료!", icon="🎉")
+                
+    st.markdown("---")
+    
+    if st.button("📤 구글 드라이브 업로드 (NotebookLM)"):
+        if st.session_state['data']:
+            with st.spinner("드라이브에 업로드 중..."):
+                txt_content = f"오늘의 전체 지면 기사 원문 ({get_latest_date()})\n" + "="*50 + "\n\n"
+                for d in st.session_state['data']:
+                    grade = d.get('중요도등급', '하')
+                    txt_content += f"[{grade}] [{d['신문사']}-{d['지면']}] {d['제목']}\n"
+                    txt_content += f"등록일시: {d.get('등록일시', '')}\n"
+                    txt_content += f"링크: {d['링크']}\n\n"
+                    txt_content += f"{d.get('기사내용', '본문 없음')}\n\n"
+                    txt_content += "-"*50 + "\n\n"
+                
+                txt_path = os.path.join("daily", f"{target_date}_summary.txt")
+                save_to_txt(txt_content, txt_path)
+                fid = upload_to_drive(txt_content, os.path.basename(txt_path), DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+                if fid and "error" not in str(fid).lower():
+                    st.toast(f"✅ 드라이브 업로드 완료!", icon="☁️")
+                else: st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
+        else: st.toast("⚠️ 필터링된 기사가 없습니다.", icon="⚠️")
 
 # Main Header
 st.title("🗞️ AI 데일리 지면 신문 서비스")
@@ -303,7 +335,7 @@ with tab3:
                 st.markdown(f"""
                 <div class="news-card">
                     <span class="{badge_class}">{badge_icon}{row['신문사']}</span>
-                    <div class="news-title">{row['제목']}</div>
+                    <div class="news-title"><a href="{row['링크']}" target="_blank">{row['제목']}</a></div>
                     <div class="news-meta">
                         <span>📍 {row['지면']}</span>
                         <span>📊 등급: {row.get('중요도등급', '하')}</span>
