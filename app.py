@@ -101,23 +101,23 @@ st.markdown(f"""
         border: 1px solid rgba(255, 215, 0, 0.4);
     }}
 
-    .news-title {
+    .news-title {{
         font-size: 1.1rem;
         font-weight: 600;
         line-height: 1.4;
         margin-bottom: 0.8rem;
         color: #FFFFFF;
-    }
+    }}
 
-    .news-title a {
+    .news-title a {{
         text-decoration: none !important;
         color: inherit !important;
         transition: color 0.2s;
-    }
+    }}
 
-    .news-title a:hover {
+    .news-title a:hover {{
         color: var(--primary) !important;
-    }
+    }}
 
     .news-meta {{
         font-size: 0.85rem;
