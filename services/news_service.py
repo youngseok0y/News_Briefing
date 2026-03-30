@@ -1,86 +1,66 @@
 import os
 import pandas as pd
 from typing import List, Dict, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from models.news_item import NewsItem
 from scraper import NewsScraper
+from services.storage_service import StorageService
 import utils
 
 class NewsService:
-    """Service to manage news scraping, processing, and cloud storage workflows."""
+    """Professional News Service using Parallel Scrapers and Storage Layer."""
     
-    def __init__(self, drive_folder_id: str, service_account_file: str):
+    def __init__(self, storage_svc: StorageService):
         self.scraper = NewsScraper()
-        self.drive_folder_id = drive_folder_id
-        self.service_account_file = service_account_file
+        self.storage = storage_svc
         self.kst = utils.KST
 
     def fetch_and_process_daily_news(self, target_date: str) -> List[NewsItem]:
-        """Orchestrates the full scraping workflow for a specific date."""
-        print(f"🔄 Starting news collection for {target_date}...")
+        """Orchestrates parallel scraping and saves results via StorageService."""
+        print(f"🔄 Fetching news with optimized storage for {target_date}...")
         
-        # 1. Fetch metadata
         raw_data = self.scraper.fetch_metadata()
-        if not raw_data:
-            return []
+        if not raw_data: return []
             
-        # 2. Cleanup & Deduplicate
-        df = pd.DataFrame(raw_data)
-        df = df.drop_duplicates(subset=["링크"])
+        df = pd.DataFrame(raw_data).drop_duplicates(subset=["링크"])
         unique_list = df.to_dict('records')
         
-        # 3. Load full content
         processed_items = []
-        for item in unique_list:
-            body, date_str = self.scraper.get_article_details(item['링크'])
-            # Map raw data to NewsItem model
-            mapped_data = {
-                '제목': item['제목'],
-                '링크': item['링크'],
-                '신문사': item['신문사'],
-                '지면': item['지면'],
-                '중요': item.get('중요', False),
-                '중요도점수': item.get('중요도점수', 0),
-                '중요도등급': item.get('중요도등급', '하'),
-                '기사내용': body,
-                'date': target_date,
-                '등록일시': date_str
-            }
-            processed_items.append(NewsItem.from_dict(mapped_data))
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_item = {executor.submit(self.scraper.get_article_details, item['링크']): item for item in unique_list}
             
-        # 4. Save to local cache
-        cache_path = os.path.join("daily", f"{target_date}_articles.json")
-        utils.save_to_json([item.to_dict() for item in processed_items], cache_path)
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
+                try:
+                    body, date_str = future.result()
+                    processed_items.append(NewsItem.from_dict({
+                        **item, '기사내용': body, 'date': target_date, '등록일시': date_str
+                    }))
+                except Exception as exc:
+                    print(f"❌ Article error on {item['링크']}: {exc}")
+            
+        # 💡 [Optimization] Save results using specialized StorageService
+        self.storage.save_local_json([i.to_dict() for i in processed_items], f"{target_date}_articles.json")
         
         return processed_items
 
     def upload_for_notebook_lm(self, news_items: List[NewsItem], target_date: str) -> Tuple[bool, str]:
-        """Formats and uploads news content for NotebookLM analysis."""
-        if not news_items:
-            return False, "No items to upload"
+        """Formats and uploads optimized data for NotebookLM via StorageService."""
+        if not news_items: return False, "No items"
             
-        # Build optimized text for AI analysis
-        content_header = f"🗞️ AI News Briefing: Full Press Coverage ({target_date})\n"
-        content_header += "="*60 + "\n\n"
-        
+        content_header = f"🗞️ AI News Briefing: Full Press Coverage ({target_date})\n" + "="*60 + "\n\n"
         body = ""
-        for item in news_items:
-            body += f"[{item.grade}] [{item.press} - {item.page}] {item.title}\n"
-            body += f"Timestamp: {item.created_at}\n"
-            body += f"Link: {item.link}\n\n"
-            body += f"{item.content}\n\n"
-            body += "-"*60 + "\n\n"
+        for item in sorted(news_items, key=lambda x: x.importance_score, reverse=True):
+            body += f"[{item.grade}] [{item.press} - {item.page}] {item.title}\n{item.created_at}\n{item.link}\n\n{item.content}\n\n" + "-"*60 + "\n\n"
             
         full_text = content_header + body
         filename = f"{target_date}_summary.txt"
         
-        # Local save & Cloud upload
-        utils.save_to_txt(full_text, os.path.join("daily", filename))
-        result_id = utils.upload_to_drive(full_text, filename, self.drive_folder_id, self.service_account_file)
+        self.storage.save_local_txt(full_text, filename)
+        result_id = self.storage.upload_content_to_drive(full_text, filename)
         
-        if result_id and "Error" not in str(result_id):
-            return True, result_id
-        return False, str(result_id)
+        return ("Error" not in str(result_id)), str(result_id)
 
     def get_latest_alert_status(self) -> Dict[str, Any]:
-        """Provides direct access to the latest breaking news alert status."""
-        return utils.get_alert_status_uncached("alert_state.json", self.drive_folder_id, self.service_account_file)
+        """Delegates alert status fetching to StorageService."""
+        return self.storage.get_alert_status_uncached()

@@ -2,79 +2,95 @@ import streamlit as st
 import os
 from datetime import datetime
 import utils
-from services import ui_service, sync_service, news_service, ai_service
+from config.settings import settings
+from services import ui_service, sync_service, news_service, ai_service, storage_service
 
-# 1. 초기화 및 설정
+# 1. 초기화 및 설정 (Pure Presentation Initialization)
 st.set_page_config(page_title="AI News Briefing Center", layout="wide", initial_sidebar_state="expanded")
 ui_service.inject_custom_css()
 
-# 2. 보안 설정 및 서비스 초기화 (Session State 활용)
-if 'initialized' not in st.session_state:
-    try:
-        # 서비스 인스턴스 생성
-        st.session_state['news_svc'] = news_service.NewsService(st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
-        st.session_state['ai_svc'] = ai_service.AIService(st.secrets["GEMINI_API_KEY"])
-        st.session_state['initialized'] = True
-    except Exception as e:
-        st.error(f"⚠️ 시스템 초기화 에러: {e}")
-        st.stop()
+# 💡 [V4.0 Optimization] Singletons for Unified Resources
+@st.cache_resource(show_spinner="시스템 인프라 구축 중...")
+def get_resource_layer():
+    """Initializes the base singleton services (Infrastructure & UI)."""
+    # 1. Infrastructure Layer
+    storage_svc = storage_service.StorageService(settings.SERVICE_ACCOUNT_FILE)
+    
+    # 2. Business Layer
+    news_svc = news_service.NewsService(storage_svc)
+    ai_svc = ai_service.AIService(settings.gemini_api_key)
+    
+    return storage_svc, news_svc, ai_svc
 
-# 3. Session 데이터 기본값 설정
+# Initialize core services once
+storage_svc, news_svc, ai_svc = get_resource_layer()
+
+# 2. Page Orchestration Logic
+target_date = utils.get_latest_date()
+
+# Session state defaults
 DEFAULTS = {'data': [], 'analysis_cache': {}, 'nyt_text': "", 'nyt_translation': "", 'final_report': ""}
 for k, v in DEFAULTS.items():
     if k not in st.session_state: st.session_state[k] = v
 
-# 4. 사이드바 (컨트롤 & 실시간 상태)
+# 3. Sidebar: Branding & Control Center
 logo_base64 = ui_service.get_base64_image("logo.png")
 ui_service.render_sidebar_header(logo_base64)
 
-target_date = utils.get_latest_date()
-alert_info = st.session_state['news_svc'].get_latest_alert_status()
+# Real-time alert status (delegated to services)
+alert_info = news_svc.get_latest_alert_status()
 
-# 버튼 이벤트 핸들러 정의
+# Event Handlers
 def handle_sync():
-    sync_service.sync_daily_reports(target_date, st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
+    sync_service.sync_daily_reports(target_date, storage_svc)
 
 def handle_scrape():
-    with st.spinner("엔진 가동 중..."):
-        st.session_state['data'] = st.session_state['news_svc'].fetch_and_process_daily_news(target_date)
-        st.toast("✅ 수집 완료!")
+    with st.spinner("🚀 최적화된 병렬 엔진 가동 중..."):
+        st.session_state['data'] = news_svc.fetch_and_process_daily_news(target_date)
+        st.toast("✅ 전체 뉴스 수집 완료!")
 
 def handle_upload():
-    success, msg = st.session_state['news_svc'].upload_for_notebook_lm(st.session_state['data'], target_date)
-    st.toast("✅ 업로드 성공!" if success else f"❌ 실패: {msg}")
+    success, msg = news_svc.upload_for_notebook_lm(st.session_state['data'], target_date)
+    st.toast("✅ 드라이브 업로드 완료!" if success else f"❌ 에러: {msg}")
 
+# Render Control Panel
 ui_service.render_sidebar_controls(handle_sync, handle_scrape, handle_upload, alert_info)
 
-# 5. 메인 대시보드
+# 4. Main View
 st.title("🗞️ AI 데일리 지면 신문 서비스")
-st.caption(f"🕒 현재 시각 (KST): {datetime.now(utils.KST).strftime('%Y-%m-%d %H:%M:%S')} | 아키텍처 v3.0 (Enterprise)")
+st.caption(f"🕒 KST: {datetime.now(utils.KST).strftime('%Y-%m-%d %H:%M:%S')} | Architecture V4.0 Professional")
 
 tab1, tab2, tab3 = st.tabs(["📈 NYT Global", "🤖 Gemini Insight", "📑 Archive"])
 
 with tab1:
     def handle_nyt():
-        with st.spinner("NYT 로드 중..."):
+        with st.spinner("NYT 기사 수집 및 고품격 번역 중..."):
             raw_email = utils.fetch_nyt_newsletter()
-            translated = st.session_state['ai_svc'].translate_nyt(raw_email)
+            translated = ai_svc.translate_nyt(raw_email)
             st.session_state['nyt_text'], st.session_state['nyt_translation'] = raw_email, translated
-            utils.save_and_upload_json({"raw": raw_email, "translation": translated, "date": target_date}, f"{target_date}_nyt.json", st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
+            # Save via unified storage infrastructure
+            storage_svc.save_local_json({"raw": raw_email, "translation": translated, "date": target_date}, f"{target_date}_nyt.json")
+            storage_svc.upload_content_to_drive(translated, f"{target_date}_nyt_translated.txt")
 
     ui_service.render_nyt_viewer(st.session_state['nyt_translation'], handle_nyt)
 
 with tab2:
     def handle_insight():
-        with st.spinner("인사이트 분석 중..."):
-            report = st.session_state['ai_svc'].generate_insight_report(st.session_state['data'])
+        if not st.session_state['data']:
+            st.warning("먼저 데이터를 수집(Scrape)하거나 동기화(Sync)해 주세요.")
+            return
+        with st.spinner("🤖 Gemini 수석 전략 분석가가 리포트 생성 중..."):
+            report = ai_svc.generate_insight_report(st.session_state['data'])
             st.session_state['final_report'] = report
-            utils.save_and_upload_json({"report": report, "date": target_date}, f"{target_date}_insight.json", st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
+            storage_svc.save_local_json({"report": report, "date": target_date}, f"{target_date}_insight.json")
 
     ui_service.render_insight_report(st.session_state['final_report'], handle_insight)
 
 with tab3:
     def handle_deep_dive(item):
-        analysis = st.session_state['ai_svc'].analyze_deep_dive(item)
-        st.session_state['analysis_cache'][item.link] = analysis
+        with st.spinner("상세 분석 리포트 생성 중..."):
+            analysis = ai_svc.analyze_deep_dive(item)
+            st.session_state['analysis_cache'][item.link] = analysis
 
     ui_service.render_news_grid(st.session_state['data'], handle_deep_dive, st.session_state['analysis_cache'])
 
