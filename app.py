@@ -3,10 +3,10 @@ import pandas as pd
 import google.generativeai as genai
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 from scraper import NewsScraper
-from utils import get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, upload_to_drive, fetch_nyt_newsletter, list_drive_files, download_drive_file
+from utils import get_latest_date, hash_text, trim_text, save_to_json, save_to_txt, upload_to_drive, fetch_nyt_newsletter, list_drive_files, download_drive_file, KST
 
 # ==========================================
 # 1. 설정 (사용자 정보 입력)
@@ -62,6 +62,9 @@ if 'nyt_summary' not in st.session_state:
     st.session_state['nyt_summary'] = ""
 
 st.title("🗞️ AI 데일리 지면 신문 서비스 (최적화 버전)")
+# 현재 KST 시간 표시
+now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+st.caption(f"🕒 현재 동기화 시간 (KST): {now_kst}")
 
 # ==========================================
 # 3. 사이드바 컨트롤 (접었다 펼 수 있는 기능 제공)
