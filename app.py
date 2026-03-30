@@ -131,36 +131,49 @@ st.markdown(f"""
     }}
 
     .news-meta {{
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: var(--text-dim);
-        margin-top: auto;
+        position: absolute;
+        bottom: 1.2rem;
+        left: 1.2rem;
     }}
 
-    /* Sidebar & Global Button Refinement */
+    /* Sidebar & Global Button Refinement (Unified with Gdrive Style) */
+    [data-testid="stSidebar"] .stButton>button, 
     .stButton>button {{
         width: 100% !important;
-        border-radius: 10px !important;
-        background: linear-gradient(135deg, #1E3A8A 0%, #0F172A 100%) !important;
+        border-radius: 8px !important;
+        background: linear-gradient(135deg, #1E3A8A 0%, #060914 100%) !important;
         color: white !important;
         border: 1px solid var(--glass-border) !important;
         padding: 0.5rem 1rem !important;
         font-weight: 600 !important;
         transition: all 0.2s !important;
-        font-size: 0.85rem !important;
+        font-size: 0.8rem !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
     }}
 
-    /* Card Bottom Button Logic */
-    .card-btn-container .stButton>button {{
-        border-top: none !important;
-        border-top-left-radius: 0 !important;
-        border-top-right-radius: 0 !important;
-        border-bottom-left-radius: 16px !important;
-        border-bottom-right-radius: 16px !important;
-        background: rgba(255,255,255,0.03) !important;
-        text-align: right !important;
-        padding-right: 1.5rem !important;
+    .stButton>button:hover {{
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 10px rgba(88, 225, 255, 0.2) !important;
+    }}
+
+    /* Analysis Button Inside Card (Bottom-Right) */
+    .analysis-btn-container {{
+        position: absolute;
+        bottom: 0.8rem;
+        right: 0.8rem;
+        width: 100px !important;
+        z-index: 100;
+    }}
+
+    .analysis-btn-container .stButton>button {{
+        background: rgba(88, 225, 255, 0.05) !important;
+        border: 1px solid rgba(88, 225, 255, 0.2) !important;
         color: var(--primary) !important;
-        height: 40px !important;
+        padding: 0.2rem 0.5rem !important;
+        font-size: 0.7rem !important;
+        height: 30px !important;
     }}
 
     /* Sidebar Logo Positioning */
@@ -186,7 +199,7 @@ if 'nyt_summary' not in st.session_state:
 
 # Sidebar Top
 if logo_base64:
-    st.sidebar.markdown(f'<div class="logo-container"><img src="data:image/png;base64,{logo_base64}" width="150" style="filter: drop-shadow(0 0 10px rgba(88,225,255,0.4));"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown(f'<div class="logo-container"><img src="data:image/png;base64,{logo_base64}" width="140" style="filter: drop-shadow(0 0 10px rgba(88,225,255,0.4));"></div>', unsafe_allow_html=True)
 else:
     st.sidebar.title("🗞️ AI News Briefing")
 
@@ -197,7 +210,7 @@ save_path = os.path.join("daily", f"{target_date}_articles.json")
 
 # Sidebar Expander for technical ops
 with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True):
-    if st.button("☁️ 클라우드 리포트 동기화", help="구글 드라이브에서 최신 분석 결과물을 가져옵니다."):
+    if st.button("☁️ 클라우드 리포트 동기화"):
         with st.spinner("동기화 중..."):
             files = list_drive_files(DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
             if files:
@@ -210,7 +223,7 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=True
             else:
                 st.error("파일을 찾을 수 없습니다.")
 
-    if st.button("🔄 오늘자 신문 강제 수집", help="네이버 지면 기사를 실시간으로 새로 긁어옵니다."):
+    if st.button("🔄 오늘자 신문 강제 수집"):
         with st.spinner("AI 수집 엔진 가동 중..."):
             engine = st.session_state['scraper_engine']
             raw_data = engine.fetch_metadata()
@@ -327,7 +340,6 @@ with tab3:
         
         filtered_df = df[df['신문사'].isin(selected_press)]
         
-        # Grid System for News Cards
         col_idx = 0
         cols = st.columns(3)
         
@@ -337,10 +349,9 @@ with tab3:
                 badge_class = "news-tag important-badge" if is_important else "news-tag"
                 badge_icon = "⭐ " if is_important else ""
                 
-                # Render Individual News Card Container
-                # 카드 본체
+                # Using a container for relative positioning
+                st.markdown(f'<div class="card-wrapper">', unsafe_allow_html=True)
                 st.markdown(f"""
-                <div class="news-card">
                     <span class="{badge_class}">{badge_icon}{row['신문사']}</span>
                     <div class="news-title"><a href="{row['링크']}" target="_blank">{row['제목']}</a></div>
                     <div class="news-meta">
