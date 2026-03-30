@@ -23,7 +23,7 @@ SERVICE_ACCOUNT_FILE = 'credentials.json'
 # 3. 모델 초기화
 try:
     genai.configure(api_key=GEMINI_API_KEY)
-    # 2026 기준 가장 범용적인 모델로 수정 (기존 gemini-2.5-flash는 오타)
+    # 2026 기준 가장 범용적인 모델로 수정
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error(f"Gemini 초기화 에러: {e}")
@@ -75,7 +75,7 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=Fals
                 unique_data = df.to_dict('records')
                 progress_bar = st.progress(0, text="기사 본문 로드 중...")
                 for idx, item in enumerate(unique_data):
-                    body, date = engine.get_article_details(item['リンク'])
+                    body, date = engine.get_article_details(item['링크'])
                     item['기사내용'] = body
                     item['등록일시'] = date
                     progress_bar.progress((idx + 1) / len(unique_data), text=f"수집 중 ({idx+1}/{len(unique_data)})")
@@ -115,13 +115,18 @@ with st.sidebar.expander("🔔 속보 알림 시스템", expanded=True):
     # 대시보드 실시간 반영을 위해 비캐싱 함수 사용
     alert_info = utils.get_alert_status_uncached("alert_state.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
     if alert_info:
-        st.success(f"📟 시스템 정상 작동 중")
-        st.caption(f"최근 전송: {alert_info.get('updated_at', 'N/A')}")
-        st.markdown(f"**속보:** {alert_info.get('last_title', '내용 없음')}")
-        if st.button("🔗 소스 확인"):
-             st.info(f"뉴스 링크: {alert_info.get('link', '#')}")
+        if isinstance(alert_info, dict) and "last_title" in alert_info:
+            st.success(f"📟 시스템 정상 작동 중")
+            st.caption(f"최근 전송: {alert_info.get('updated_at', 'N/A')}")
+            st.markdown(f"**속보:** {alert_info.get('last_title', '내용 없음')}")
+            if st.button("🔗 소스 확인"):
+                 st.info(f"뉴스 링크: {alert_info.get('link', '#')}")
+        else:
+            st.error(f"❌ 데이터 형식 오류 (드라이브 확인 요망)")
     else:
+        # 인증 오류인지 파일 부재인지 구분하기 위해 안내 추가
         st.warning("⚠️ 알림 상태를 가져올 수 없습니다.")
+        st.info("💡 드라이브에 'alert_state.json'이 아직 없거나, GCP_SERVICE_ACCOUNT 인증 정보가 올바르지 않을 수 있습니다.")
 
 # 7. Main Dashboard Content
 st.title("🗞️ AI 데일리 지면 신문 서비스")

@@ -147,6 +147,12 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
     if not sa_info and os.getenv("GCP_SERVICE_ACCOUNT"):
         try:
             sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT").strip())
+            # 필수 필드 자가 진단 추가
+            required_fields = ["project_id", "private_key", "client_email", "token_uri"]
+            missing = [f for f in required_fields if f not in sa_info]
+            if missing:
+                print(f"⚠️ GCP_SERVICE_ACCOUNT JSON에 다음 필드가 누락되었습니다: {missing}")
+                print("💡 '서비스 계정' 키 JSON 전체를 복사했는지 확인해 주세요.")
         except Exception as e:
             print(f"❌ GCP_SERVICE_ACCOUNT 파싱 에러: {e}")
     elif os.path.exists(service_account_file):
