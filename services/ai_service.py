@@ -1,13 +1,13 @@
 import google.generativeai as genai
 import os
-import streamlit as st
 from typing import List, Optional
 from models.news_item import NewsItem
+from utils import cache_data # 💡 Use safe decorator from utils
 
-# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의 (클래스 메서드 해싱 문제 해결)
-@st.cache_data(ttl=86400, show_spinner=False)
+# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의
+@cache_data(ttl=86400, show_spinner=False)
 def _cached_gemini_call(api_key: str, model_name: str, prompt: str) -> str:
-    """Standalone cached function to prevent the entire AIService from being hashed."""
+    """Standalone cached function that works in both Streamlit and CLI environments."""
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
@@ -33,7 +33,6 @@ class AIService:
         )
         
         prompt = f"{persona}\n\n[대상 본문]\n{raw_html}"
-        # 캐싱된 전역 함수 호출
         return _cached_gemini_call(self.api_key, self.model_name, prompt)
 
     def generate_insight_report(self, news_items: List[NewsItem]) -> str:
@@ -52,9 +51,8 @@ class AIService:
         )
         
         content = "\n".join([f"[{n.press}] {n.title}\n{n.content[:500]}..." for n in news_items])
-        prompt = f"{persona}\n\n{framework}\n\n[분석 대상 기사 목록]\n{context}"
+        prompt = f"{persona}\n\n{framework}\n\n[분석 대상 기사 목록]\n{content}"
         
-        # 캐싱된 전역 함수 호출
         return _cached_gemini_call(self.api_key, self.model_name, prompt)
 
     def analyze_deep_dive(self, article: NewsItem) -> str:
@@ -71,5 +69,4 @@ class AIService:
             "위 기사를 분석하여 '요약', '핵심 이해관계자', '숨겨진 시사점'을 각각 2문장 내외로 정리해줘."
         )
         
-        # 캐싱된 전역 함수 호출
         return _cached_gemini_call(self.api_key, self.model_name, prompt)

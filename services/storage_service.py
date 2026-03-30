@@ -1,15 +1,17 @@
 import os
 import json
 import io
-import streamlit as st
 from typing import List, Dict, Any, Optional
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import utils # Base auth remains in utils for now, or moved slowly
+import utils
 from config.settings import settings
 
 class StorageService:
-    """Infrastructure layer for managing Google Drive and Local File System I/O."""
+    """
+    Infrastructure layer for managing Google Drive and Local File System I/O.
+    V5.4: Removed unused streamlit import to fix CI/CD ModuleNotFoundError.
+    """
     
     def __init__(self, service_account_file: str = 'credentials.json'):
         self.service_account_file = service_account_file
