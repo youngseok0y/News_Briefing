@@ -1,0 +1,33 @@
+name: News Alert System Cron
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # 매 10분마다 실행
+  workflow_dispatch: # 수동 실행 버튼 활성화
+
+jobs:
+  news-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install feedparser requests google-api-python-client \
+                      google-auth-oauthlib google-auth-httplib2 \
+                      beautifulsoup4 lxml python-dateutil
+
+      - name: Run News Notifier
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          # 중복 제거: 기존에 설정된 GOOGLE_CLIENT_SECRET_JSON을 사용
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
+          KST_HOUR_OFFSET: 9
+        run: python notifier.py

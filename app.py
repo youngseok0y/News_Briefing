@@ -105,6 +105,21 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=Fals
                     st.toast(f"✅ 드라이브 업로드 완료!", icon="☁️")
                 else:
                     st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
+        else:
+            st.toast("⚠️ 필터링된 기사가 없습니다.", icon="⚠️")
+
+# Sidebar: Breaking News Alert Status
+st.sidebar.markdown("---")
+with st.sidebar.expander("🔔 속보 알림 시스템", expanded=True):
+    alert_info = utils.find_and_download_json("alert_state.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+    if alert_info:
+        st.success(f"📟 시스템 정상 작동 중")
+        st.caption(f"최근 전송: {alert_info.get('updated_at', 'N/A')}")
+        st.markdown(f"**속보:** {alert_info.get('last_title', '내용 없음')}")
+        if st.button("🔗 소스 확인"):
+             st.info(f"뉴스 링크: {alert_info.get('link', '#')}")
+    else:
+        st.warning("⚠️ 알림 상태를 가져올 수 없습니다.")
 
 # 7. Main Dashboard Content
 st.title("🗞️ AI 데일리 지면 신문 서비스")
