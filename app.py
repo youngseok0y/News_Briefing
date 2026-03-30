@@ -64,22 +64,28 @@ st.markdown(f"""
         font-weight: 700 !important;
     }}
 
-    /* News Card Design */
+    /* News Card Design - Fixed Height & Flexbox */
     .news-card {{
         background: var(--card-bg);
         backdrop-filter: blur(10px);
         border: 1px solid var(--glass-border);
         border-radius: 16px;
         padding: 1.5rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0px; /* 버튼과 밀착시키기 위해 0으로 조정 */
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        cursor: pointer;
+        height: 200px; /* 고정 높이 부여 */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        overflow: hidden;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }}
 
     .news-card:hover {{
         transform: translateY(-5px);
         border-color: var(--primary);
-        box-shadow: 0 10px 30px rgba(88, 225, 255, 0.15);
+        box-shadow: 0 10px 30px rgba(88, 225, 255, 0.1);
     }}
 
     .news-tag {{
@@ -88,7 +94,7 @@ st.markdown(f"""
         color: var(--primary);
         padding: 0.2rem 0.6rem;
         border-radius: 50px;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         font-weight: 600;
         margin-bottom: 0.5rem;
         text-transform: uppercase;
@@ -102,11 +108,16 @@ st.markdown(f"""
     }}
 
     .news-title {{
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: 600;
         line-height: 1.4;
         margin-bottom: 0.8rem;
         color: #FFFFFF;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
     }}
 
     .news-title a {{
@@ -120,47 +131,42 @@ st.markdown(f"""
     }}
 
     .news-meta {{
-        font-size: 0.85rem;
+        font-size: 0.75rem;
         color: var(--text-dim);
-        display: flex;
-        gap: 1rem;
+        margin-top: auto;
     }}
 
-    /* Sidebar Refinement */
-    [data-testid="stSidebar"] {{
-        background-color: #050812 !important;
-        border-right: 1px solid var(--glass-border);
-    }}
-
+    /* Sidebar & Global Button Refinement */
     .stButton>button {{
+        width: 100% !important;
         border-radius: 10px !important;
         background: linear-gradient(135deg, #1E3A8A 0%, #0F172A 100%) !important;
         color: white !important;
         border: 1px solid var(--glass-border) !important;
-        padding: 0.5rem 1.5rem !important;
+        padding: 0.5rem 1rem !important;
         font-weight: 600 !important;
         transition: all 0.2s !important;
+        font-size: 0.85rem !important;
     }}
 
-    .stButton>button:hover {{
-        border-color: var(--primary) !important;
-        box-shadow: 0 0 15px rgba(88, 225, 255, 0.3) !important;
-    }}
-
-    /* Fade-in Animation */
-    @keyframes fadeIn {{
-        from {{ opacity: 0; transform: translateY(10px); }}
-        to {{ opacity: 1; transform: translateY(0); }}
-    }}
-
-    .main .block-container {{
-        animation: fadeIn 0.8s ease-out;
+    /* Card Bottom Button Logic */
+    .card-btn-container .stButton>button {{
+        border-top: none !important;
+        border-top-left-radius: 0 !important;
+        border-top-right-radius: 0 !important;
+        border-bottom-left-radius: 16px !important;
+        border-bottom-right-radius: 16px !important;
+        background: rgba(255,255,255,0.03) !important;
+        text-align: right !important;
+        padding-right: 1.5rem !important;
+        color: var(--primary) !important;
+        height: 40px !important;
     }}
 
     /* Sidebar Logo Positioning */
     .logo-container {{
         text-align: center;
-        padding-bottom: 2rem;
+        padding-bottom: 1.5rem;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -180,7 +186,7 @@ if 'nyt_summary' not in st.session_state:
 
 # Sidebar Top
 if logo_base64:
-    st.sidebar.markdown(f'<div class="logo-container"><img src="data:image/png;base64,{logo_base64}" width="180"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown(f'<div class="logo-container"><img src="data:image/png;base64,{logo_base64}" width="150" style="filter: drop-shadow(0 0 10px rgba(88,225,255,0.4));"></div>', unsafe_allow_html=True)
 else:
     st.sidebar.title("🗞️ AI News Briefing")
 
@@ -331,7 +337,8 @@ with tab3:
                 badge_class = "news-tag important-badge" if is_important else "news-tag"
                 badge_icon = "⭐ " if is_important else ""
                 
-                # Render Individual News Card
+                # Render Individual News Card Container
+                # 카드 본체
                 st.markdown(f"""
                 <div class="news-card">
                     <span class="{badge_class}">{badge_icon}{row['신문사']}</span>
