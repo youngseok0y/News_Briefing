@@ -315,7 +315,15 @@ def save_and_upload_json(data: dict, filename: str, folder_id: str, service_acco
 
 @cache_data(ttl=600)
 def find_and_download_json(filename: str, folder_id: str, service_account_file: str = 'credentials.json'):
-    """드라이브에서 파일명으로 찾아 JSON 데이터 반환"""
+    """드라이브에서 파일명으로 찾아 JSON 데이터 반환 (캐싱 사용)"""
+    return _get_json_from_drive(filename, folder_id, service_account_file)
+
+def get_alert_status_uncached(filename: str, folder_id: str, service_account_file: str = 'credentials.json'):
+    """캐시 없이 드라이브에서 직접 상태 파일을 읽어옴 (대시보드 실시간용)"""
+    return _get_json_from_drive(filename, folder_id, service_account_file)
+
+def _get_json_from_drive(filename: str, folder_id: str, service_account_file: str):
+    """드라이브에서 파일을 찾는 내부 공통 로직 (실제 API 호출)"""
     files = list_drive_files(folder_id, service_account_file)
     target = next((f for f in files if f['name'] == filename), None)
     if target:

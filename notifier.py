@@ -46,6 +46,7 @@ def run_alert_system():
             res = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"}, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
             
+            # 랭킹 뉴스 및 고정 항목을 피하기 위해 리스트를 순회하며 필터링
             selectors = [
                 "#main_content div.list_body ul li dl dt:not(.photo) a",
                 "#main_content ul.type06_headline li dl dt:not(.photo) a",
@@ -53,20 +54,27 @@ def run_alert_system():
             ]
             
             for selector in selectors:
-                first_news = soup.select_one(selector)
-                if first_news:
-                    temp_title = first_news.get_text(strip=True)
-                    if temp_title and len(temp_title) > 2:
+                items = soup.select(selector)
+                for item in items:
+                    temp_title = item.get_text(strip=True)
+                    temp_link = item.get("href", "")
+                    
+                    # 🔗 필터링: URL에 랭킹 관련 파라미터가 있으면 실제 속보가 아니므로 건너뜀
+                    if any(kw in temp_link for kw in ["RANKING", "ntype=", "rc=N"]):
+                        continue
+                    
+                    if temp_title and len(temp_title) > 5: # 너무 짧은 제목 제외
                         current_title = temp_title
-                        current_link = first_news["href"]
-                        if not current_link.startswith("http"):
-                            current_link = "https://news.naver.com" + current_link
+                        current_link = temp_link if temp_link.startswith("http") else "https://news.naver.com" + temp_link
                         break
+                
+                if current_title:
+                    break
                     
             if current_title:
-                print(f"✅ 네이버 크롤링으로 뉴스 수집 성공: {current_title[:35]}...")
+                print(f"✅ 최신 속보 수집 완료: {current_title[:35]}...")
             else:
-                print("❌ 네이버 페이지에서 실제 속보 리스트를 찾을 수 없습니다.")
+                print("❌ 네이버 페이지에서 적절한 최신 속보를 찾을 수 없습니다. (필터링됨)")
         except Exception as e:
             print(f"❌ 크롤링 중 에러 발생: {e}")
 
