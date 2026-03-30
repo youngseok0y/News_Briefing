@@ -11,6 +11,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 import pickle
 import base64
 from bs4 import BeautifulSoup
+try:
+    import streamlit as st
+except ImportError:
+    st = None 
+
 # 한국 표준시 (KST, UTC+9) 설정
 KST = timezone(timedelta(hours=9))
 

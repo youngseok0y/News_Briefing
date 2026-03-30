@@ -22,18 +22,40 @@ def run_alert_system():
     last_state = utils.find_and_download_json(STATE_FILE, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
     last_title = last_state.get('last_title', '') if last_state else ''
 
-    # 3. RSS 피드 수집 (연합뉴스 속보)
-    print("📡 연합뉴스 RSS 피드 수집 중...")
-    feed = feedparser.parse("https://www.yonhapnews.co.kr/rss/news.xml")
+    # 3. 뉴스 수집 (RSS 우선 -> 네이버 크롤링 백업)
+    print("📡 뉴스 데이터 수집 중...")
+    current_title, current_link = None, None
     
-    if not feed.entries:
+    # 전략 A: RSS 피드 확인
+    try:
+        feed = feedparser.parse("https://www.yonhapnews.co.kr/rss/news.xml")
+        if feed.entries:
+            current_title = feed.entries[0].title
+            current_link = feed.entries[0].link
+            print("✅ RSS 피드에서 뉴스 수집 성공")
+    except Exception as e:
+        print(f"⚠️ RSS 수집 실패: {e}")
+
+    # 전략 B: 네이버 연합뉴스 속보 페이지 크롤링 (RSS 실패 혹은 보조 확인)
+    if not current_title:
+        print("🔍 네이버 연합뉴스 속보 페이지 크롤링 시도...")
+        from bs4 import BeautifulSoup
+        try:
+            url = "https://news.naver.com/main/list.naver?mode=LPOD&mid=sec&sid1=001&sid2=140&oid=001&isYeonhapFlash=Y"
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(res.text, "html.parser")
+            # 네이버 뉴스 헤드라인 리스트 구조 분석
+            first_news = soup.select_one("ul.type06_headline li dl dt:not(.photo) a")
+            if first_news:
+                current_title = first_news.get_text(strip=True)
+                current_link = first_news["href"]
+                print("✅ 네이버 크롤링으로 뉴스 수집 성공")
+        except Exception as e:
+            print(f"❌ 크롤링 실패: {e}")
+
+    if not current_title:
         print("⚠️ 수집된 기사가 없습니다.")
         return
-
-    # 최신 순으로 정렬 (보통 RSS는 이미 정렬되어 있음)
-    latest_news = feed.entries[0]
-    current_title = latest_news.title
-    current_link = latest_news.link
 
     # 4. 중복 체크 및 알림 발송
     if current_title != last_title:
