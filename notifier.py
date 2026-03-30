@@ -41,23 +41,22 @@ def run_alert_system():
         print("🔍 네이버 연합뉴스 속보 페이지(Flash) 크롤링 시도...")
         from bs4 import BeautifulSoup
         try:
-            # 연합뉴스 전용 속보 페이지는 구조가 일반 뉴스 리스트와 다를 수 있음
+            # 연합뉴스 전용 속보 페이지는 구조가 일반 뉴스 리스트와 다를 수 있음 (#main_content 내부 한정)
             url = "https://news.naver.com/main/list.naver?mode=LPOD&mid=sec&sid1=001&sid2=140&oid=001&isYeonhapFlash=Y"
             res = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"}, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
             
-            # 연합뉴스 전용 페이지의 실제 구조 타겟팅
             selectors = [
-                "div.list_body ul li dl dt:not(.photo) a", # 네이버 속보 리스트의 표준 구조
-                "ul.type06_headline li dl dt:not(.photo) a",
-                "td.content div.list_body ul li a"
+                "#main_content div.list_body ul li dl dt:not(.photo) a",
+                "#main_content ul.type06_headline li dl dt:not(.photo) a",
+                "#main_content td.content div.list_body ul li a"
             ]
             
             for selector in selectors:
                 first_news = soup.select_one(selector)
                 if first_news:
                     temp_title = first_news.get_text(strip=True)
-                    if temp_title:
+                    if temp_title and len(temp_title) > 2:
                         current_title = temp_title
                         current_link = first_news["href"]
                         if not current_link.startswith("http"):
@@ -65,11 +64,9 @@ def run_alert_system():
                         break
                     
             if current_title:
-                print(f"✅ 네이버 크롤링으로 뉴스 수집 성공: {current_title[:30]}...")
+                print(f"✅ 네이버 크롤링으로 뉴스 수집 성공: {current_title[:35]}...")
             else:
-                print("❌ 네이버 페이지에서 기사 제목을 찾을 수 없습니다. (HTML 구조 미매치)")
-                # 디버깅을 위한 HTML 일부 출력 (Actions 로그 확인용)
-                print(f"DEBUG: HTML body snippet: {res.text[:500]}...")
+                print("❌ 네이버 페이지에서 실제 속보 리스트를 찾을 수 없습니다.")
         except Exception as e:
             print(f"❌ 크롤링 중 에러 발생: {e}")
 

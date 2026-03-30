@@ -112,7 +112,8 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=Fals
 # Sidebar: Breaking News Alert Status
 st.sidebar.markdown("---")
 with st.sidebar.expander("🔔 속보 알림 시스템", expanded=True):
-    alert_info = utils.find_and_download_json("alert_state.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
+    # 대시보드 실시간 반영을 위해 비캐싱 함수 사용
+    alert_info = utils.get_alert_status_uncached("alert_state.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
     if alert_info:
         st.success(f"📟 시스템 정상 작동 중")
         st.caption(f"최근 전송: {alert_info.get('updated_at', 'N/A')}")
