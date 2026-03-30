@@ -23,7 +23,8 @@ SERVICE_ACCOUNT_FILE = 'credentials.json'
 # 3. 모델 초기화
 try:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    # 2026 기준 가장 범용적인 모델로 수정 (기존 gemini-2.5-flash는 오타)
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error(f"Gemini 초기화 에러: {e}")
     st.stop()

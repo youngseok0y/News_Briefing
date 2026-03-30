@@ -19,7 +19,7 @@ def run_automation():
     # 1. Gemini 초기화
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         print(f"❌ Gemini 초기화 에러: {e}")
         return

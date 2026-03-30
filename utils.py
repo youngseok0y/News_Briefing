@@ -110,8 +110,17 @@ def get_google_creds(oauth_client_file='client_secret.json'):
             if not client_config:
                 return None
 
-            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-            creds = flow.run_local_server(port=0)
+            # GitHub Actions나 서버 환경 등 브라우저를 열 수 없는 환경인지 체크
+            if os.getenv("GITHUB_ACTIONS") or os.getenv("NON_INTERACTIVE"):
+                print("❌ Non-interactive 환경입니다. OAuth 인증(run_local_server)을 건너뜁니다.")
+                return None
+                
+            try:
+                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+                creds = flow.run_local_server(port=0, timeout_seconds=60) # 60초 타임아웃 추가
+            except Exception as e:
+                print(f"OAuth Flow Error: {e}")
+                return None
             
         # 새로운 토큰 저장 (로컬 환경일 때만)
         if not st or not st.secrets:
@@ -136,7 +145,10 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
             pass
             
     if not sa_info and os.getenv("GCP_SERVICE_ACCOUNT"):
-        sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT"))
+        try:
+            sa_info = json.loads(os.getenv("GCP_SERVICE_ACCOUNT").strip())
+        except Exception as e:
+            print(f"❌ GCP_SERVICE_ACCOUNT 파싱 에러: {e}")
     elif os.path.exists(service_account_file):
         with open(service_account_file, 'r') as f:
             sa_info = json.load(f)
@@ -269,13 +281,16 @@ def list_drive_files(folder_id, service_account_file: str = 'credentials.json'):
         if not service: return []
         
         query = f"'{folder_id}' in parents and trashed = false"
+        print(f"📂 드라이브 폴더({folder_id}) 내 파일 목록 조회 중...")
         results = service.files().list(
             q=query, 
-            pageSize=10, 
+            pageSize=15, 
             fields="files(id, name, createdTime)",
             orderBy="createdTime desc"
         ).execute()
-        return results.get('files', [])
+        files = results.get('files', [])
+        print(f"✅ 드라이브에서 {len(files)}개의 파일을 발견했습니다.")
+        return files
     except Exception as e:
         print(f"Drive List Error: {e}")
         return []
