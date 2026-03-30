@@ -277,8 +277,13 @@ def upload_to_drive(content: str, filename: str, folder_id: str, service_account
         file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         return file.get('id')
     except Exception as e:
+        error_msg = str(e)
+        if "storageQuotaExceeded" in error_msg:
+            print("❌ 구글 드라이브 쿼터 에러 발생!")
+            print("💡 해결 방법: 드라이브 폴더를 서비스 계정 이메일(client_email)과 '공유(편집자 권한)' 하셨는지 확인해 주세요.")
+            return "Error: Storage Quota Exceeded (Check Folder Sharing)"
         print(f"Drive Upload Error: {e}")
-        return str(e)
+        return error_msg
 
 def list_drive_files(folder_id, service_account_file: str = 'credentials.json'):
     """지정된 폴더 내의 파일 목록을 최신순으로 반환"""
