@@ -2,12 +2,14 @@ import streamlit as st
 import os
 import json
 import utils
+from models.news_item import NewsItem
 
 def sync_daily_reports(target_date, drive_folder_id, credentials_file):
     """
     Synchronizes all news reports for a specific date using a 2-tier cache:
     1. Checks local 'daily/' directory.
     2. Downloads from Google Drive if local is missing.
+    Converts list of dicts to list of NewsItem for the 'articles' key.
     """
     sync_results = []
     
@@ -43,7 +45,12 @@ def sync_daily_reports(target_date, drive_folder_id, credentials_file):
         # Update Session State based on key
         if data:
             if key == "articles":
-                st.session_state['data'] = data
+                # Convert list of dicts -> list of NewsItem objects
+                try:
+                    news_items = [NewsItem.from_dict(d) for d in data]
+                    st.session_state['data'] = news_items
+                except Exception as e:
+                    st.error(f"뉴스 데이터 모델 변환 실패: {e}")
             elif key == "nyt":
                 st.session_state['nyt_text'] = data.get('raw', '')
                 st.session_state['nyt_translation'] = data.get('translation', '')

@@ -1,210 +1,81 @@
 import streamlit as st
-import pandas as pd
-import google.generativeai as genai
 import os
 from datetime import datetime
 import utils
-from scraper import NewsScraper
-from services import ui_service, sync_service
+from services import ui_service, sync_service, news_service, ai_service
 
-# 1. 초기 Streamlit 설정 (가장 먼저 실행되어야 함)
+# 1. 초기화 및 설정
 st.set_page_config(page_title="AI News Briefing Center", layout="wide", initial_sidebar_state="expanded")
-
-# 2. 설정 및 보안 (Secrets 관리)
-try:
-    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    DRIVE_FOLDER_ID = st.secrets["DRIVE_FOLDER_ID"]
-except KeyError as e:
-    st.error(f"⚠️ 시스템 구성 오류: secrets.toml에 필수 키가 없습니다. ({e})")
-    st.stop()
-
-SERVICE_ACCOUNT_FILE = 'credentials.json' 
-
-# 3. 모델 초기화
-try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # 2026 기준 가장 범용적인 모델로 수정
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except Exception as e:
-    st.error(f"Gemini 초기화 에러: {e}")
-    st.stop()
-
-# 4. UI 스타일링 및 로고
 ui_service.inject_custom_css()
+
+# 2. 보안 설정 및 서비스 초기화 (Session State 활용)
+if 'initialized' not in st.session_state:
+    try:
+        # 서비스 인스턴스 생성
+        st.session_state['news_svc'] = news_service.NewsService(st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
+        st.session_state['ai_svc'] = ai_service.AIService(st.secrets["GEMINI_API_KEY"])
+        st.session_state['initialized'] = True
+    except Exception as e:
+        st.error(f"⚠️ 시스템 초기화 에러: {e}")
+        st.stop()
+
+# 3. Session 데이터 기본값 설정
+DEFAULTS = {'data': [], 'analysis_cache': {}, 'nyt_text': "", 'nyt_translation': "", 'final_report': ""}
+for k, v in DEFAULTS.items():
+    if k not in st.session_state: st.session_state[k] = v
+
+# 4. 사이드바 (컨트롤 & 실시간 상태)
 logo_base64 = ui_service.get_base64_image("logo.png")
+ui_service.render_sidebar_header(logo_base64)
 
-# 5. Session State 통합 초기화
-SESSION_DEFAULTS = {
-    'data': [],
-    'analysis_cache': {},
-    'scraper_engine': NewsScraper(),
-    'nyt_text': "",
-    'nyt_translation': "",
-    'final_report': "",
-    'last_sync': None
-}
-
-for key, default in SESSION_DEFAULTS.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-# 6. Sidebar 구성
-if logo_base64:
-    st.sidebar.markdown(f'<div class="logo-container"><img src="data:image/png;base64,{logo_base64}" width="140" style="filter: drop-shadow(0 0 10px rgba(88,225,255,0.4));"></div>', unsafe_allow_html=True)
-else:
-    st.sidebar.title("🗞️ AI News Briefing")
-
-st.sidebar.header("🕹️ 컨트롤 센터")
 target_date = utils.get_latest_date()
+alert_info = st.session_state['news_svc'].get_latest_alert_status()
 
-# Sidebar: Sync & Scrape
-with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=False):
-    if st.button("☁️ 클라우드 리포트 동기화", help="로컬 캐시 및 드라이브에서 오늘 날짜의 정보를 가져옵니다."):
-        results = sync_service.sync_daily_reports(target_date, DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-        if results:
-            st.session_state['last_sync'] = datetime.now(utils.KST).strftime("%H:%M:%S")
-            st.toast(f"✅ {len(results)}개 항목 동기화 완료")
+# 버튼 이벤트 핸들러 정의
+def handle_sync():
+    sync_service.sync_daily_reports(target_date, st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
 
-    if st.button("🔄 오늘자 신문 강제 수집"):
-        with st.spinner("AI 수집 엔진 가동 중..."):
-            engine = st.session_state['scraper_engine']
-            raw_data = engine.fetch_metadata()
-            df = pd.DataFrame(raw_data)
-            if not df.empty:
-                df = df.drop_duplicates(subset=["링크"])
-                unique_data = df.to_dict('records')
-                progress_bar = st.progress(0, text="기사 본문 로드 중...")
-                for idx, item in enumerate(unique_data):
-                    body, date = engine.get_article_details(item['링크'])
-                    item['기사내용'] = body
-                    item['등록일시'] = date
-                    progress_bar.progress((idx + 1) / len(unique_data), text=f"수집 중 ({idx+1}/{len(unique_data)})")
-                st.session_state['data'] = unique_data
-                utils.save_to_json(st.session_state['data'], os.path.join("daily", f"{target_date}_articles.json"))
-                st.toast("✅ 수집 및 분석 준비 완료!", icon="🎉")
-            else:
-                st.warning("수집된 데이터가 없습니다.")
+def handle_scrape():
+    with st.spinner("엔진 가동 중..."):
+        st.session_state['data'] = st.session_state['news_svc'].fetch_and_process_daily_news(target_date)
+        st.toast("✅ 수집 완료!")
 
-    st.markdown("---")
-    
-    if st.button("📤 구글 드라이브 업로드 (NotebookLM)"):
-        if st.session_state['data']:
-            with st.spinner("드라이브에 업로드 중..."):
-                txt_content = f"오늘의 전체 지면 기사 원문 ({utils.get_latest_date()})\n" + "="*50 + "\n\n"
-                for d in st.session_state['data']:
-                    grade = d.get('중요도등급', '하')
-                    txt_content += f"[{grade}] [{d['신문사']}-{d['지면']}] {d['제목']}\n"
-                    txt_content += f"등록일시: {d.get('등록일시', '')}\n"
-                    txt_content += f"링크: {d['링크']}\n\n"
-                    txt_content += f"{d.get('기사내용', '본문 없음')}\n\n"
-                    txt_content += "-"*50 + "\n\n"
-                
-                txt_path = os.path.join("daily", f"{target_date}_summary.txt")
-                utils.save_to_txt(txt_content, txt_path)
-                fid = utils.upload_to_drive(txt_content, os.path.basename(txt_path), DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-                if fid and "error" not in str(fid).lower():
-                    st.toast(f"✅ 드라이브 업로드 완료!", icon="☁️")
-                else:
-                    st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
-        else:
-            st.toast("⚠️ 필터링된 기사가 없습니다.", icon="⚠️")
+def handle_upload():
+    success, msg = st.session_state['news_svc'].upload_for_notebook_lm(st.session_state['data'], target_date)
+    st.toast("✅ 업로드 성공!" if success else f"❌ 실패: {msg}")
 
-# Sidebar: Breaking News Alert Status
-st.sidebar.markdown("---")
-with st.sidebar.expander("🔔 속보 알림 시스템", expanded=True):
-    # 대시보드 실시간 반영을 위해 비캐싱 함수 사용
-    alert_info = utils.get_alert_status_uncached("alert_state.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-    if alert_info:
-        if isinstance(alert_info, dict) and "last_title" in alert_info:
-            st.success(f"📟 시스템 정상 작동 중")
-            st.caption(f"최근 전송: {alert_info.get('updated_at', 'N/A')}")
-            st.markdown(f"**속보:** {alert_info.get('last_title', '내용 없음')}")
-            if st.button("🔗 소스 확인"):
-                 st.info(f"뉴스 링크: {alert_info.get('link', '#')}")
-        else:
-            st.error(f"❌ 데이터 형식 오류 (드라이브 확인 요망)")
-    else:
-        # 인증 오류인지 파일 부재인지 구분하기 위해 안내 추가
-        st.warning("⚠️ 알림 상태를 가져올 수 없습니다.")
-        st.info("💡 드라이브에 'alert_state.json'이 아직 없거나, GCP_SERVICE_ACCOUNT 인증 정보가 올바르지 않을 수 있습니다.")
+ui_service.render_sidebar_controls(handle_sync, handle_scrape, handle_upload, alert_info)
 
-# 7. Main Dashboard Content
+# 5. 메인 대시보드
 st.title("🗞️ AI 데일리 지면 신문 서비스")
-now_kst = datetime.now(utils.KST).strftime("%Y-%m-%d %H:%M:%S")
-st.caption(f"🕒 현재 동기화 시간 (KST): {now_kst} | 아키텍처 v2.0 (Service Oriented)")
+st.caption(f"🕒 현재 시각 (KST): {datetime.now(utils.KST).strftime('%Y-%m-%d %H:%M:%S')} | 아키텍처 v3.0 (Enterprise)")
 
 tab1, tab2, tab3 = st.tabs(["📈 NYT Global", "🤖 Gemini Insight", "📑 Archive"])
 
 with tab1:
-    st.subheader("🇺🇸 New York Times: The Morning")
-    if st.button("📩 최신 뉴스레터 번역 실행"):
-        with st.spinner("NYT 이메일 로드 중..."):
+    def handle_nyt():
+        with st.spinner("NYT 로드 중..."):
             raw_email = utils.fetch_nyt_newsletter()
-            if "Error" in raw_email:
-                st.error(f"수집 실패: {raw_email}")
-            else:
-                st.session_state['nyt_text'] = raw_email
-                prompt = f"너는 뉴욕타임즈 전문 번역가야. HTML 이미지 태그를 절대 수정하지 말고 한국어로 고품격 번역해줘.\n본문:\n{raw_email}"
-                try:
-                    res = model.generate_content(prompt)
-                    st.session_state['nyt_translation'] = res.text
-                    nyt_data = {"raw": raw_email, "translation": res.text, "date": target_date}
-                    utils.save_and_upload_json(nyt_data, f"{target_date}_nyt.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-                    st.toast("✅ 번역 완료 및 클라우드 저장!", icon="☁️")
-                except Exception as e:
-                    st.error(f"번역 실패: {e}")
-    
-    if st.session_state['nyt_translation']:
-        st.markdown(f'<div style="background: rgba(255,255,255,0.02); padding: 2rem; border-radius: 20px; border: 1px solid var(--glass-border);">{st.session_state["nyt_translation"]}</div>', unsafe_allow_html=True)
+            translated = st.session_state['ai_svc'].translate_nyt(raw_email)
+            st.session_state['nyt_text'], st.session_state['nyt_translation'] = raw_email, translated
+            utils.save_and_upload_json({"raw": raw_email, "translation": translated, "date": target_date}, f"{target_date}_nyt.json", st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
+
+    ui_service.render_nyt_viewer(st.session_state['nyt_translation'], handle_nyt)
 
 with tab2:
-    st.subheader("🤖 Gemini 종합 이슈 인사이트")
-    if st.button("🚀 종합 논조 분석 리포트 생성"):
-        if not st.session_state['data']:
-            st.warning("먼저 데이터를 동기화하거나 수집해 주세요.")
-        else:
-            df_full = pd.DataFrame(st.session_state['data'])
-            imp_news = df_full[df_full['중요'] == True].sort_values(by="중요도점수", ascending=False).groupby('신문사').head(3).to_dict('records')
-            full_context = "\n".join([f"[{n['신문사']}] {n['제목']}\n{utils.trim_text(n.get('기사내용',''))}" for n in imp_news])
-            
-            with st.spinner("Gemini AI가 신문사별 논조를 비교 중입니다..."):
-                try:
-                    res = model.generate_content(f"오늘 대한민국의 주요 의제를 정의하고 신문사별 논조 차이를 분석해줘:\n\n{full_context}")
-                    st.session_state['final_report'] = res.text
-                    utils.save_and_upload_json({"report": res.text, "date": target_date}, f"{target_date}_insight.json", DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
-                    st.toast("✅ 분석 완료 및 클라우드 저장!", icon="☁️")
-                except Exception as e:
-                    st.error(f"분석 실패: {e}")
+    def handle_insight():
+        with st.spinner("인사이트 분석 중..."):
+            report = st.session_state['ai_svc'].generate_insight_report(st.session_state['data'])
+            st.session_state['final_report'] = report
+            utils.save_and_upload_json({"report": report, "date": target_date}, f"{target_date}_insight.json", st.secrets["DRIVE_FOLDER_ID"], 'credentials.json')
 
-    if st.session_state.get('final_report'):
-        st.markdown(f'<div style="background: linear-gradient(to right, #0F172A, #1E293B); padding: 2rem; border-radius: 20px; border-left: 5px solid var(--primary);">{st.session_state["final_report"]}</div>', unsafe_allow_html=True)
+    ui_service.render_insight_report(st.session_state['final_report'], handle_insight)
 
 with tab3:
-    st.subheader("📅 개별 기사 보관소")
-    if not st.session_state['data']:
-        st.info("데이터가 없습니다. 사이드바에서 수집을 시작해 주세요.")
-    else:
-        df = pd.DataFrame(st.session_state['data'])
-        press_list = df['신문사'].unique().tolist()
-        selected_press = st.multiselect("신문사 필터링", press_list, default=press_list)
-        filtered_df = df[df['신문사'].isin(selected_press)]
-        
-        cols = st.columns(3)
-        for idx, (_, row) in enumerate(filtered_df.iterrows()):
-            with cols[idx % 3]:
-                ui_service.render_news_card(row)
-                if st.button("심층 분석", key=f"btn_{row['링크']}"):
-                    cache_key = row['링크']
-                    if cache_key not in st.session_state['analysis_cache']:
-                        with st.spinner("본문 심층 분석 중..."):
-                            try:
-                                res = model.generate_content(f"이 기사의 요약과 시사점을 간단히 작성해줘:\n\n{utils.trim_text(row.get('기사내용',''))}")
-                                st.session_state['analysis_cache'][cache_key] = res.text
-                            except Exception as e:
-                                st.error(f"분석 실패: {e}")
-                    
-                    analysis_result = st.session_state['analysis_cache'].get(cache_key)
-                    if analysis_result:
-                        st.markdown(f'<div style="background: rgba(88,225,255,0.05); padding: 1rem; border-radius: 10px; font-size: 0.9rem; border: 1px dashed var(--primary); margin-top: 5px;">{analysis_result}</div>', unsafe_allow_html=True)
+    def handle_deep_dive(item):
+        analysis = st.session_state['ai_svc'].analyze_deep_dive(item)
+        st.session_state['analysis_cache'][item.link] = analysis
+
+    ui_service.render_news_grid(st.session_state['data'], handle_deep_dive, st.session_state['analysis_cache'])
 
 ui_service.render_footer()
