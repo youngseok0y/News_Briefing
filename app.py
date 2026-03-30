@@ -9,11 +9,17 @@ import base64
 import utils
 from scraper import NewsScraper
 
-# ==========================================
-# 1. 설정 (사용자 정보 입력)
-# ==========================================
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "AIzaSyDe4P6W9wuYo2OFvsOhW6Idth_3_-20Qc0")
-DRIVE_FOLDER_ID = st.secrets.get("DRIVE_FOLDER_ID", "1VZ2GdtdoXCZFnhuDlYqj2DUoMKQZrlCF")
+# 1. 초기 Streamlit 설정 (가장 먼저 실행되어야 함)
+st.set_page_config(page_title="AI News Briefing Center", layout="wide", initial_sidebar_state="expanded")
+
+# 2. 설정 및 보안 (사용자 정보 입력)
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    DRIVE_FOLDER_ID = st.secrets["DRIVE_FOLDER_ID"]
+except KeyError as e:
+    st.error(f"⚠️ 시스템 구성 오류: secrets.toml에 필수 키가 없습니다. ({e})")
+    st.stop()
+
 SERVICE_ACCOUNT_FILE = 'credentials.json' 
 
 try:
@@ -21,11 +27,9 @@ try:
     model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error(f"Gemini 초기화 에러: {e}")
+    st.stop()
 
-# ==========================================
-# 2. 상태 초기화 및 프리미엄 UI 스타일링 (Sleek Dark)
-# ==========================================
-st.set_page_config(page_title="AI News Briefing Center", layout="wide", initial_sidebar_state="expanded")
+# 3. 상태 관리 및 UI 초기화
 
 def get_base64_image(file_path):
     if os.path.exists(file_path):
@@ -66,6 +70,7 @@ st.markdown(f"""
 
     /* News Card Design - Fixed Height & Flexbox */
     .news-card {{
+        position: relative; /* 자식 요소(메타, 버튼)의 기준점 */
         background: var(--card-bg);
         backdrop-filter: blur(10px);
         border: 1px solid var(--glass-border);
@@ -184,18 +189,21 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-if 'data' not in st.session_state:
-    st.session_state['data'] = []
-if 'analysis_cache' not in st.session_state:
-    st.session_state['analysis_cache'] = {}
-if 'scraper_engine' not in st.session_state:
-    st.session_state['scraper_engine'] = NewsScraper()
-if 'nyt_text' not in st.session_state:
-    st.session_state['nyt_text'] = ""
-if 'nyt_translation' not in st.session_state:
-    st.session_state['nyt_translation'] = ""
-if 'nyt_summary' not in st.session_state:
-    st.session_state['nyt_summary'] = ""
+# Session State 통합 초기화
+SESSION_DEFAULTS = {
+    'data': [],
+    'analysis_cache': {},
+    'scraper_engine': NewsScraper(),
+    'nyt_text': "",
+    'nyt_translation': "",
+    'nyt_summary': "",
+    'final_report': "",
+    'last_sync': None
+}
+
+for key, default in SESSION_DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # Sidebar Top
 if logo_base64:
@@ -253,6 +261,8 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=Fals
                 st.session_state['data'] = unique_data
                 utils.save_to_json(st.session_state['data'], save_path)
                 st.toast("✅ 수집 및 분석 준비 완료!", icon="🎉")
+            else:
+                st.warning("수집된 데이터가 없습니다.")
 
     st.markdown("---")
     
@@ -273,8 +283,10 @@ with st.sidebar.expander("🛠️ 데이터 수집 및 자동화", expanded=Fals
                 fid = utils.upload_to_drive(txt_content, os.path.basename(txt_path), DRIVE_FOLDER_ID, SERVICE_ACCOUNT_FILE)
                 if fid and "error" not in str(fid).lower():
                     st.toast(f"✅ 드라이브 업로드 완료!", icon="☁️")
-                else: st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
-        else: st.toast("⚠️ 필터링된 기사가 없습니다.", icon="⚠️")
+                else:
+                    st.toast(f"❌ 업로드 실패: {fid}", icon="❌")
+        else:
+            st.toast("⚠️ 필터링된 기사가 없습니다.", icon="⚠️")
 
 # Main Header
 st.title("🗞️ AI 데일리 지면 신문 서비스")
@@ -368,38 +380,57 @@ with tab3:
         
         filtered_df = df[df['신문사'].isin(selected_press)]
         
-        col_idx = 0
+        # 3열 브리핑 보드 (Grid Layout)
         cols = st.columns(3)
         
-        for _, row in filtered_df.iterrows():
-            with cols[col_idx % 3]:
+        for idx, (_, row) in enumerate(filtered_df.iterrows()):
+            with cols[idx % 3]:
                 is_important = row['중요']
                 badge_class = "news-tag important-badge" if is_important else "news-tag"
                 badge_icon = "⭐ " if is_important else ""
                 
-                # Using a container for relative positioning
-                st.markdown(f'<div class="card-wrapper">', unsafe_allow_html=True)
-                st.markdown(f"""
-                    <span class="{badge_class}">{badge_icon}{row['신문사']}</span>
-                    <div class="news-title"><a href="{row['링크']}" target="_blank">{row['제목']}</a></div>
-                    <div class="news-meta">
-                        <span>📍 {row['지면']}</span>
-                        <span>📊 등급: {row.get('중요도등급', '하')}</span>
+                # Consolidate HTML into a single clean block
+                card_html = f"""
+                <div class="card-wrapper">
+                    <div class="news-card">
+                        <span class="{badge_class}">{badge_icon}{row['신문사']}</span>
+                        <div class="news-title"><a href="{row['링크']}" target="_blank">{row['제목']}</a></div>
+                        <div class="news-meta">
+                            <span>📍 {row['지면']}</span>
+                            <span>📊 등급: {row.get('중요도등급', '하')}</span>
+                        </div>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
+                """
+                st.markdown(card_html, unsafe_allow_html=True)
                 
-                # Detail & Analyze Button in a small column within the grid
+                # Implement Analysis Cache Logic
                 if st.button("심층 분석", key=f"btn_{row['링크']}"):
-                    with st.spinner("본문 심층 분석 중..."):
-                        body = row.get('기사내용', '')
-                        try:
-                            res = model.generate_content(f"이 기사의 핵심 요약과 독자들에게 전하는 시사점을 간단히 작성해줘:\n\n{utils.trim_text(body)}")
-                            st.markdown(f'<div style="background: rgba(88,225,255,0.05); padding: 1rem; border-radius: 10px; font-size: 0.9rem; border: 1px dashed var(--primary); margin-top: 5px;">{res.text}</div>', unsafe_allow_html=True)
-                        except: st.error("분석 불가")
-            
-            col_idx += 1
+                    cache_key = row['링크']
+                    if cache_key not in st.session_state['analysis_cache']:
+                        with st.spinner("본문 심층 분석 중..."):
+                            body = row.get('기사내용', '')
+                            try:
+                                res = model.generate_content(f"이 기사의 핵심 요약과 독자들에게 전하는 시사점을 간단히 작성해줘:\n\n{utils.trim_text(body)}")
+                                st.session_state['analysis_cache'][cache_key] = res.text
+                            except Exception as e:
+                                st.error(f"분석 실패: {e}")
+                    
+                    # Display cached or fresh analysis
+                    analysis_result = st.session_state['analysis_cache'].get(cache_key)
+                    if analysis_result:
+                        st.markdown(f'''
+                            <div style="background: rgba(88,225,255,0.05); padding: 1rem; border-radius: 10px; 
+                            font-size: 0.9rem; border: 1px dashed var(--primary); margin-top: 5px;">
+                                {analysis_result}
+                            </div>
+                        ''', unsafe_allow_html=True)
 
-# Footer
+# Footer (Premium Branding)
 st.markdown("---")
-st.caption("Produced by Google Gemini-2.5-Flash | Styled for Premium Intelligence")
+st.markdown(f"""
+    <div style="text-align: center; color: var(--text-dim); font-size: 0.8rem; padding: 1rem;">
+        ⚡ Powered by <strong>Gemini 2.5 Flash</strong> & <strong>Google Drive Cloud Insight</strong><br>
+        Produced for High-End Intelligence Briefing | © 2026 AI News Aggregator
+    </div>
+""", unsafe_allow_html=True)
