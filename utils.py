@@ -140,6 +140,7 @@ def get_drive_service(service_account_file, oauth_client_file='client_secret.jso
         
     return None
 
+@st.cache_data(ttl=3600)
 def fetch_nyt_newsletter(oauth_client_file='client_secret.json'):
     """지메일에서 NYT 'The Morning' 뉴스레터 최신 1건을 가져와 텍스트로 파싱"""
     try:
@@ -289,6 +290,7 @@ def save_and_upload_json(data: dict, filename: str, folder_id: str, service_acco
     save_to_json(data, filepath)
     return upload_to_drive(json.dumps(data, ensure_ascii=False), filename, folder_id, service_account_file)
 
+@st.cache_data(ttl=600)
 def find_and_download_json(filename: str, folder_id: str, service_account_file: str = 'credentials.json'):
     """드라이브에서 파일명으로 찾아 JSON 데이터 반환"""
     files = list_drive_files(folder_id, service_account_file)
