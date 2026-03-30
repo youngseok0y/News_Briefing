@@ -27,7 +27,7 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
-          # 중복 제거: 기존에 설정된 GOOGLE_CLIENT_SECRET_JSON을 사용
-          GCP_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
+          # 새로 등록하신 서비스 계정 키를 사용하도록 업데이트
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           KST_HOUR_OFFSET: 9
         run: python notifier.py

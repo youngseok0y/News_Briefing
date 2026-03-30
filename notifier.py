@@ -38,33 +38,38 @@ def run_alert_system():
 
     # 전략 B: 네이버 연합뉴스 속보 페이지 크롤링 (RSS 실패 혹은 보조 확인)
     if not current_title:
-        print("🔍 네이버 연합뉴스 속보 페이지 크롤링 시도...")
+        print("🔍 네이버 연합뉴스 속보 페이지(Flash) 크롤링 시도...")
         from bs4 import BeautifulSoup
         try:
+            # 연합뉴스 전용 속보 페이지는 구조가 일반 뉴스 리스트와 다를 수 있음
             url = "https://news.naver.com/main/list.naver?mode=LPOD&mid=sec&sid1=001&sid2=140&oid=001&isYeonhapFlash=Y"
-            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"}, timeout=10)
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"}, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
             
-            # 여러 개의 셀렉터를 시도하여 정확도 향상
+            # 연합뉴스 전용 페이지의 실제 구조 타겟팅
             selectors = [
+                "div.list_body ul li dl dt:not(.photo) a", # 네이버 속보 리스트의 표준 구조
                 "ul.type06_headline li dl dt:not(.photo) a",
-                "ul.type06 li dl dt:not(.photo) a",
-                "div.news_area a.news_tit"
+                "td.content div.list_body ul li a"
             ]
             
             for selector in selectors:
                 first_news = soup.select_one(selector)
                 if first_news:
-                    current_title = first_news.get_text(strip=True)
-                    current_link = first_news["href"]
-                    if not current_link.startswith("http"):
-                        current_link = "https://news.naver.com" + current_link
-                    break
+                    temp_title = first_news.get_text(strip=True)
+                    if temp_title:
+                        current_title = temp_title
+                        current_link = first_news["href"]
+                        if not current_link.startswith("http"):
+                            current_link = "https://news.naver.com" + current_link
+                        break
                     
             if current_title:
                 print(f"✅ 네이버 크롤링으로 뉴스 수집 성공: {current_title[:30]}...")
             else:
-                print("❌ 네이버 페이지에서 기사 제목을 찾을 수 없습니다. (HTML 구조 변경 가능성)")
+                print("❌ 네이버 페이지에서 기사 제목을 찾을 수 없습니다. (HTML 구조 미매치)")
+                # 디버깅을 위한 HTML 일부 출력 (Actions 로그 확인용)
+                print(f"DEBUG: HTML body snippet: {res.text[:500]}...")
         except Exception as e:
             print(f"❌ 크롤링 중 에러 발생: {e}")
 
