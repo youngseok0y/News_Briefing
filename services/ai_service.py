@@ -37,9 +37,11 @@ class AIService:
     V6.3: Uses gemini-2.0-flash, fully supported with system_instruction in v1beta.
     """
     
-    def __init__(self, api_key: str, model_name: str = 'gemini-1.5-flash-latest'):
-        # 💡 [V6.4 FIX] gemini-2.0-flash has 0 free-tier quota → gemini-1.5-flash-latest
-        # gemini-1.5-flash-latest: free tier available, v1beta supported, system_instruction OK
+    def __init__(self, api_key: str, model_name: str = 'gemini-2.0-flash-lite'):
+        # 💡 [V6.5 FIX] Confirmed available models for this API key via client.models.list():
+        # gemini-2.0-flash-lite ✅ (free tier + system_instruction supported)
+        # gemini-2.0-flash ❌ (quota=0 on free tier)
+        # gemini-1.5-flash ❌ (not in model list, completely removed)
         self.api_key = api_key
         self.model_name = model_name
         
