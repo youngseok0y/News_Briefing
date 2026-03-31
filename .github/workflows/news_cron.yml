@@ -1,9 +1,9 @@
-name: News Alert System Cron
+name: News Alert System (속보 알림)
 
 on:
   schedule:
-    - cron: '*/10 * * * *' # 매 10분마다 실행
-  workflow_dispatch: # 수동 실행 버튼 활성화
+    - cron: '*/10 * * * *' # 매 10분마다 실행 (속보 감지)
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   news-check:
@@ -18,10 +18,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        run: |
-          pip install feedparser requests google-api-python-client \
-                      google-auth-oauthlib google-auth-httplib2 \
-                      beautifulsoup4 lxml python-dateutil
+        run: pip install -r requirements.txt
 
       - name: Run News Notifier
         env:
@@ -31,5 +28,6 @@ jobs:
           GOOGLE_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
           GOOGLE_TOKEN_PICKLE_BASE64: ${{ secrets.GOOGLE_TOKEN_PICKLE_BASE64 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          KST_HOUR_OFFSET: 9
-        run: python notifier.py
+        run: |
+          cd News_Briefing
+          python notifier.py

@@ -20,18 +20,24 @@ class NewsItem:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'NewsItem':
-        """Creates an instance from a dictionary with field mapping."""
-        # 맵핑 (기존 딕셔너리 키 대응)
+    def from_dict(cls, data: dict) -> 'NewsItem':
+        """
+        Creates an instance from a dictionary.
+        Handles BOTH Korean keys (from scraper) and English keys (from to_dict/GDrive sync).
+        """
+        def get(ko_key: str, en_key: str, default=None):
+            """Tries Korean key first, falls back to English key."""
+            return data.get(ko_key) or data.get(en_key) or default
+
         return cls(
-            title=data.get('제목', ''),
-            link=data.get('링크', ''),
-            press=data.get('신문사', ''),
-            page=data.get('지면', ''),
-            importance=data.get('중요', False),
-            importance_score=data.get('중요도점수', 0),
-            grade=data.get('중요도등급', '하'),
-            content=data.get('기사내용', ''),
-            date=data.get('date', ''),
-            created_at=data.get('등록일시', None)
+            title=get('제목', 'title', ''),
+            link=get('링크', 'link', ''),
+            press=get('신문사', 'press', ''),
+            page=get('지면', 'page', ''),
+            importance=get('중요', 'importance', False),
+            importance_score=get('중요도점수', 'importance_score', 0),
+            grade=get('중요도등급', 'grade', '하'),
+            content=get('기사내용', 'content', ''),
+            date=get('date', 'date', ''),
+            created_at=get('등록일시', 'created_at', None)
         )

@@ -18,7 +18,8 @@ def run_automation():
     try:
         storage_svc = StorageService(settings.SERVICE_ACCOUNT_FILE)
         news_svc = NewsService(storage_svc)
-        ai_svc = AIService(settings.gemini_api_key)
+        # 💡 [V7.1] AIService requires storage_svc for GDrive-backed cache
+        ai_svc = AIService(settings.gemini_api_key, storage_svc)
         print("✅ Services initialized successfully.")
     except Exception as e:
         print(f"❌ Service Init Failed: {e}")
