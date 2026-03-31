@@ -5,29 +5,38 @@ from typing import List, Optional
 from models.news_item import NewsItem
 from utils import cache_data
 
-# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의 (New SDK V1.0+ compatible)
+# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의 (SDK V6.1 Optimized)
 @cache_data(ttl=86400, show_spinner=False)
 def _cached_gemini_call(api_key: str, model_name: str, prompt: str, system_instruction: Optional[str] = None) -> str:
-    """Standalone cached function using the NEW official Google Gen AI SDK."""
+    """
+    Standalone cached function using the NEW official Google Gen AI SDK.
+    V6.1: Explicitly forcing API version 'v1' to avoid legacy v1beta 404 errors.
+    """
     try:
-        # Initialize client within cached function to ensure hashable arguments
-        client = genai.Client(api_key=api_key)
+        # 💡 [V6.1 FIX] Explicitly set API version to 'v1' to prevent 404/v1beta issues
+        client = genai.Client(
+            api_key=api_key,
+            http_options={'api_version': 'v1'}
+        )
         
-        config = None
-        if system_instruction:
-            config = types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7
-            )
+        # Ensure model name is in correct format (sometimes 'models/' prefix helps or hurts)
+        # We will try the clean name first as per new SDK standards
+        target_model = model_name if not model_name.startswith('models/') else model_name.replace('models/', '')
+        
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.7
+        )
             
         response = client.models.generate_content(
-            model=model_name,
+            model=target_model,
             contents=prompt,
             config=config
         )
         return response.text
     except Exception as e:
-        return f"AI 서비스 호출 에러 (SDK V6.0): {str(e)}"
+        # 💡 [V6.1 Diagnostic] Detailed error logging to track versioning
+        return f"AI 서비스 호출 에러 (SDK V6.1 - v1): {str(e)}"
 
 class AIService:
     """Service layer for AI-driven analysis using the official NEW Google Gen AI SDK."""
