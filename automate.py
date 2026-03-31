@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime
 from config.settings import settings
 from services.storage_service import StorageService
@@ -15,9 +16,9 @@ def run_automation():
     
     # 1. 인프라 및 서비스 초기화 (Settings 기반)
     try:
-        storage_svc = storage_service.StorageService(settings.SERVICE_ACCOUNT_FILE)
-        news_svc = news_service.NewsService(storage_svc)
-        ai_svc = ai_service.AIService(settings.gemini_api_key)
+        storage_svc = StorageService(settings.SERVICE_ACCOUNT_FILE)
+        news_svc = NewsService(storage_svc)
+        ai_svc = AIService(settings.gemini_api_key)
         print("✅ Services initialized successfully.")
     except Exception as e:
         print(f"❌ Service Init Failed: {e}")
@@ -37,11 +38,10 @@ def run_automation():
         print(f"❌ Scraping Failed: {e}")
         return
 
-    # 3. AI 종합 인사이트 보고서 생성 (Caching 지원)
+    # 3. AI 종합 인사이트 보고서 생성
     print("🤖 Generating strategic insight report via Gemini...")
     try:
         final_report = ai_svc.generate_insight_report(news_items)
-        # Save insight report locally
         storage_svc.save_local_json({"report": final_report, "date": target_date}, f"{target_date}_insight.json")
         print("✅ Insight report generated.")
     except Exception as e:
@@ -54,7 +54,6 @@ def run_automation():
         nyt_raw = utils.fetch_nyt_newsletter(target_date)
         if "Error" not in nyt_raw:
             nyt_translation = ai_svc.translate_nyt(nyt_raw)
-            # Save NYT content via infra layer
             storage_svc.save_local_json({"raw": nyt_raw, "translation": nyt_translation, "date": target_date}, f"{target_date}_nyt.json")
             print("✅ NYT Newsletter processed.")
         else:
@@ -62,7 +61,7 @@ def run_automation():
     except Exception as e:
         print(f"❌ NYT Processing Error: {e}")
 
-    # 5. 최종 통합 업로드 (NotebookLM 포맷)
+    # 5. 최종 통합 업로드
     print("📤 Formatting and uploading to Google Drive...")
     try:
         success, fid = news_svc.upload_for_notebook_lm(news_items, target_date)
@@ -74,5 +73,4 @@ def run_automation():
         print(f"❌ Upload Stage Error: {e}")
 
 if __name__ == "__main__":
-    from services import storage_service
     run_automation()

@@ -17,8 +17,9 @@ def get_resource_layer():
     storage_svc = storage_service.StorageService(settings.SERVICE_ACCOUNT_FILE)
     
     # 2. Business Layer
+    # 💡 [V7.1] AIService now takes storage_svc for GDrive-backed persistent cache
     news_svc = news_service.NewsService(storage_svc)
-    ai_svc = ai_service.AIService(settings.gemini_api_key)
+    ai_svc = ai_service.AIService(settings.gemini_api_key, storage_svc)
     
     return storage_svc, news_svc, ai_svc
 
@@ -66,9 +67,9 @@ with tab1:
     def handle_nyt():
         with st.spinner("NYT 기사 수집 및 고품격 번역 중..."):
             raw_email = utils.fetch_nyt_newsletter()
-            translated = ai_svc.translate_nyt(raw_email)
+            # 💡 [V7.0] Pass target_date for persistent disk cache (quota saver)
+            translated = ai_svc.translate_nyt(raw_email, target_date)
             st.session_state['nyt_text'], st.session_state['nyt_translation'] = raw_email, translated
-            # Save via unified storage infrastructure
             storage_svc.save_local_json({"raw": raw_email, "translation": translated, "date": target_date}, f"{target_date}_nyt.json")
             storage_svc.upload_content_to_drive(translated, f"{target_date}_nyt_translated.txt")
 
@@ -80,13 +81,20 @@ with tab2:
             st.warning("먼저 데이터를 수집(Scrape)하거나 동기화(Sync)해 주세요.")
             return
         with st.spinner("🤖 Gemini 수석 전략 분석가가 리포트 생성 중..."):
-            report = ai_svc.generate_insight_report(st.session_state['data'])
+            # 💡 [V7.0] Pass target_date for persistent disk cache (quota saver)
+            report = ai_svc.generate_insight_report(st.session_state['data'], target_date)
             st.session_state['final_report'] = report
             storage_svc.save_local_json({"report": report, "date": target_date}, f"{target_date}_insight.json")
 
     ui_service.render_insight_report(st.session_state['final_report'], handle_insight)
 
 with tab3:
+    # 💡 [V7.0] Pre-load batch analysis cache to save quota (5 articles → 1 API call)
+    if st.session_state['data'] and not st.session_state.get('batch_loaded'):
+        batch_results = ai_svc.analyze_top_articles_batch(st.session_state['data'], target_date)
+        st.session_state['analysis_cache'].update(batch_results)
+        st.session_state['batch_loaded'] = True
+
     def handle_deep_dive(item):
         with st.spinner("상세 분석 리포트 생성 중..."):
             analysis = ai_svc.analyze_deep_dive(item)
