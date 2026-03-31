@@ -13,10 +13,10 @@ def _cached_gemini_call(api_key: str, model_name: str, prompt: str, system_instr
     V6.1: Explicitly forcing API version 'v1' to avoid legacy v1beta 404 errors.
     """
     try:
-        # 💡 [V6.1 FIX] Explicitly set API version to 'v1' to prevent 404/v1beta issues
+        # 💡 [V6.2 FIX] Use types.HttpOptions object (not dict) to force stable v1 endpoint
         client = genai.Client(
             api_key=api_key,
-            http_options={'api_version': 'v1'}
+            http_options=types.HttpOptions(api_version='v1')
         )
         
         # Ensure model name is in correct format (sometimes 'models/' prefix helps or hurts)
