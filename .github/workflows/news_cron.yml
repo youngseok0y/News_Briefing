@@ -28,6 +28,4 @@ jobs:
           GOOGLE_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_CLIENT_SECRET_JSON }}
           GOOGLE_TOKEN_PICKLE_BASE64: ${{ secrets.GOOGLE_TOKEN_PICKLE_BASE64 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          cd News_Briefing
-          python notifier.py
+        run: python notifier.py

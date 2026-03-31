@@ -30,6 +30,4 @@ jobs:
           GOOGLE_TOKEN_PICKLE_BASE64: ${{ secrets.GOOGLE_TOKEN_PICKLE_BASE64 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NON_INTERACTIVE: "true" # OAuth 브라우저 팝업 방지
-        run: |
-          cd News_Briefing
-          python automate.py
+        run: python automate.py
