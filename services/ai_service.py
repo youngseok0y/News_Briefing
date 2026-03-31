@@ -5,23 +5,17 @@ from typing import List, Optional
 from models.news_item import NewsItem
 from utils import cache_data
 
-# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의 (SDK V6.1 Optimized)
+# 💡 고품격 캐싱을 위해 전역 캐시 함수 정의
 @cache_data(ttl=86400, show_spinner=False)
 def _cached_gemini_call(api_key: str, model_name: str, prompt: str, system_instruction: Optional[str] = None) -> str:
     """
-    Standalone cached function using the NEW official Google Gen AI SDK.
-    V6.1: Explicitly forcing API version 'v1' to avoid legacy v1beta 404 errors.
+    Standalone cached function using the official Google Gen AI SDK.
+    V6.3: Use v1beta (default) + gemini-2.0-flash (model that supports system_instruction)
     """
     try:
-        # 💡 [V6.2 FIX] Use types.HttpOptions object (not dict) to force stable v1 endpoint
-        client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(api_version='v1')
-        )
-        
-        # Ensure model name is in correct format (sometimes 'models/' prefix helps or hurts)
-        # We will try the clean name first as per new SDK standards
-        target_model = model_name if not model_name.startswith('models/') else model_name.replace('models/', '')
+        # 💡 [V6.3 FIX] Let SDK use its default v1alpha/v1beta endpoint
+        # system_instruction is a v1beta feature, so do NOT force v1
+        client = genai.Client(api_key=api_key)
         
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
@@ -29,19 +23,22 @@ def _cached_gemini_call(api_key: str, model_name: str, prompt: str, system_instr
         )
             
         response = client.models.generate_content(
-            model=target_model,
+            model=model_name,
             contents=prompt,
             config=config
         )
         return response.text
     except Exception as e:
-        # 💡 [V6.1 Diagnostic] Detailed error logging to track versioning
-        return f"AI 서비스 호출 에러 (SDK V6.1 - v1): {str(e)}"
+        return f"AI 서비스 호출 에러: {str(e)}"
 
 class AIService:
-    """Service layer for AI-driven analysis using the official NEW Google Gen AI SDK."""
+    """
+    Service layer for AI-driven analysis using the official Google Gen AI SDK.
+    V6.3: Uses gemini-2.0-flash, fully supported with system_instruction in v1beta.
+    """
     
-    def __init__(self, api_key: str, model_name: str = 'gemini-1.5-flash'):
+    def __init__(self, api_key: str, model_name: str = 'gemini-2.0-flash'):
+        # 💡 [V6.3 FIX] Model changed: gemini-1.5-flash (deprecated) → gemini-2.0-flash
         self.api_key = api_key
         self.model_name = model_name
         
