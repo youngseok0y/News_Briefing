@@ -39,15 +39,17 @@ def run_alert_system():
         
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 최적화된 선택자
-        selector = ".list_body ul li dl dt:not(.photo) a"
-        items = soup.select(selector)
+        # 💡 [Fix] 진단 결과: 실제 작동하는 선택자 적용
+        # 기존: ".list_body ul li dl dt:not(.photo) a" → 0개 (구조 변경됨)
+        # 신규: ".list_body li a" → 11개 확인됨
+        items = soup.select(".list_body li a")
         
         for item in items:
             temp_title = item.get_text(strip=True)
             if temp_title and len(temp_title) > 5:
                 current_title = temp_title
                 temp_link = item.get("href", "")
+                # 신규 URL은 이미 절대경로 (https://n.news.naver.com/...)
                 current_link = temp_link if temp_link.startswith("http") else "https://news.naver.com" + temp_link
                 break
                 
