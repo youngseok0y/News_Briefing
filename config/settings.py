@@ -30,20 +30,31 @@ class Settings:
         val = os.getenv(key)
         if val:
             return val.strip()
-            
+        
         return default
+
+    def _require_secret(self, key: str) -> str:
+        value = self._get_secret(key)
+        if not value:
+            raise RuntimeError(f"Missing required configuration: {key}")
+        return value
 
     @property
     def drive_folder_id(self) -> str:
-        return self._get_secret("DRIVE_FOLDER_ID")
+        return self._require_secret("DRIVE_FOLDER_ID")
         
     @property
     def gemini_api_key(self) -> str:
-        return self._get_secret("GEMINI_API_KEY")
+        return self._require_secret("GEMINI_API_KEY")
         
     @property
     def discord_webhook(self) -> str:
         return self._get_secret("DISCORD_WEBHOOK")
+
+    @property
+    def ai_model_name(self) -> str:
+        """Centralizes which Gemini model the project should target."""
+        return self._get_secret("AI_MODEL_NAME", "gemini-2.5-flash")
 
     @property
     def is_streamlit_cloud(self) -> bool:

@@ -6,6 +6,7 @@ import json
 from typing import List, Optional, TYPE_CHECKING
 from models.news_item import NewsItem
 from utils import cache_data
+from config.settings import settings
 
 if TYPE_CHECKING:
     from services.storage_service import StorageService
@@ -56,9 +57,9 @@ class AIService:
           Quota-efficient with token budgeting and batch analysis.
     """
 
-    def __init__(self, api_key: str, storage_svc: 'StorageService', model_name: str = 'gemini-2.0-flash-lite'):
+    def __init__(self, api_key: str, storage_svc: 'StorageService', model_name: Optional[str] = None):
         self.api_key = api_key
-        self.model_name = model_name
+        self.model_name = model_name or settings.ai_model_name
         self.storage = storage_svc  # 💡 GDrive cache backend
 
     # ============================================================
