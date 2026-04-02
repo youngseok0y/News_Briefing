@@ -46,6 +46,11 @@ class Settings:
     @property
     def gemini_api_key(self) -> str:
         return self._require_secret("GEMINI_API_KEY")
+
+    @property
+    def groq_api_key(self) -> str:
+        """Optional API key for Groq fallback model."""
+        return self._get_secret("GROQ_API_KEY")
         
     @property
     def discord_webhook(self) -> str:

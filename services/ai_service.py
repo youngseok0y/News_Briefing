@@ -15,39 +15,91 @@ if TYPE_CHECKING:
 # 🤖 Core API Caller with Retry Logic (V7.1)
 # ============================================================
 
-def _call_gemini(api_key: str, model_name: str, prompt: str, system_instruction: Optional[str] = None) -> str:
-    """Raw Gemini API call with transient 429 retry logic."""
-    max_retries = 2
-    for attempt in range(max_retries + 1):
+def _notify_user(message: str):
+    """Pushes a notification to Streamlit UI if available, otherwise logs to console."""
+    print(message)
+    try:
+        import streamlit as st
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        if get_script_run_ctx():
+            st.toast(message, icon="⚠️")
+    except Exception:
+        pass
+
+
+def _call_ai_with_fallback(prompt: str, system_instruction: Optional[str] = None, initial_model: str = 'gemini-2.5-flash') -> str:
+    """Model Router that triggers fallback across providers upon quota exhaustion."""
+    
+    # 💡 Fallback Chain
+    models_to_try = [
+        {"provider": "gemini", "model": initial_model},
+        {"provider": "gemini", "model": "gemini-2.0-flash-lite"},
+    ]
+    
+    if settings.groq_api_key:
+        models_to_try.append({"provider": "groq", "model": "llama3-70b-8192"})
+
+    for idx, conf in enumerate(models_to_try):
+        provider = conf["provider"]
+        model_name = conf["model"]
+        
         try:
-            client = genai.Client(api_key=api_key)
-            config = types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7
-            )
-            response = client.models.generate_content(
-                model=model_name, contents=prompt, config=config
-            )
-            return response.text
+            if provider == "gemini":
+                # Raw API call (Google Gen AI)
+                client = genai.Client(api_key=settings.gemini_api_key)
+                config = types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7
+                )
+                response = client.models.generate_content(
+                    model=model_name, contents=prompt, config=config
+                )
+                return response.text
+                
+            elif provider == "groq":
+                # Raw API call (Groq SDK)
+                try:
+                    from groq import Groq
+                except ImportError:
+                    return f"❌ 시스템 에러: 외부 모델({model_name})을 사용하려면 'groq' 라이브러리가 필요합니다."
+                    
+                client = Groq(api_key=settings.groq_api_key)
+                messages = []
+                if system_instruction:
+                    messages.append({"role": "system", "content": system_instruction})
+                messages.append({"role": "user", "content": prompt})
+                
+                chat_completion = client.chat.completions.create(
+                    messages=messages,
+                    model=model_name,
+                    temperature=0.7,
+                )
+                return chat_completion.choices[0].message.content
 
         except Exception as e:
             err_str = str(e)
-            # 일시적 RPM 초과 → 대기 후 재시도
-            if '429' in err_str and 'retryDelay' in err_str and attempt < max_retries:
-                wait = 35 * (attempt + 1)
-                print(f"⏳ RPM 한도 초과. {wait}초 대기 후 재시도... ({attempt+1}/{max_retries})")
-                time.sleep(wait)
-                continue
-            # 일일 RPD 소진 → 재시도 불필요
-            if '429' in err_str:
-                return (
-                    "❌ **Gemini API 할당량 초과**\n\n"
-                    "오늘의 무료 API 호출 한도가 소진되었습니다.\n"
-                    "- **내일 UTC 자정** 자동 초기화됩니다.\n"
-                    "- 이전에 생성된 분석 결과는 GDrive 캐시에서 계속 확인 가능합니다."
-                )
-            return f"AI 서비스 에러: {err_str}"
-    return "AI 서비스 에러: 최대 재시도 초과"
+            
+            # 💡 할당량 초과(429) 감지 및 Fallback 전개
+            if '429' in err_str or 'quota' in err_str.lower() or 'exhausted' in err_str.lower():
+                is_last_model = idx == len(models_to_try) - 1
+                if not is_last_model:
+                    next_model = models_to_try[idx+1]["model"]
+                    _notify_user(f"💡 {model_name} 할당량 소진됨. {next_model} 대체 모델로 재진행합니다.")
+                    time.sleep(1) # 부드러운 전환을 위한 대기
+                    continue # 다음 모델 시도
+                else:
+                    _notify_user("🚨 모든 AI 모델의 할당량이 완전히 소진되었습니다.")
+                    return (
+                        "❌ **모든 AI 모델 할당량 초과**\n\n"
+                        "현재 설정된 주력 모델과 외부 대체 모델의 무료 사용량이 모두 소진되었습니다.\n"
+                        "- **내일 UTC 자정** 기점으로 자동 초기화 대상은 복구됩니다.\n"
+                        "- 이전에 성공했던 분석 결과들은 캐시에서 안전하게 보호되고 있습니다."
+                    )
+            
+            # 일반 네트워크, 구문 에러는 즉시 반환
+            return f"❌ {model_name} 서비스 장애: {err_str}"
+            
+    return "❌ AI 서비스 에러: 알 수 없는 이유로 모든 모델 생성 실패"
 
 
 class AIService:
@@ -119,7 +171,7 @@ class AIService:
         )
         prompt = f"다음 본문을 한국인 정서에 맞게 번역해:\n\n{raw_html[:3000]}"
 
-        result = _call_gemini(self.api_key, self.model_name, prompt, system_instruction=persona)
+        result = _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
         if "에러" not in result and "❌" not in result:
             self._save_to_gdrive(cache_key, result)
         return result
@@ -145,7 +197,7 @@ class AIService:
         context = self._build_news_context(news_items[:10], chars_per_article=200)
         prompt = f"{framework}\n\n[분석 대상]\n{context}"
 
-        result = _call_gemini(self.api_key, self.model_name, prompt, system_instruction=persona)
+        result = _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
         if "에러" not in result and "❌" not in result:
             self._save_to_gdrive(cache_key, result)
         return result
@@ -175,7 +227,7 @@ class AIService:
             f"'[기사 N] 요약 / 이해관계자 / 시사점' 형식으로 답해:\n\n{articles_text}"
         )
 
-        result_text = _call_gemini(self.api_key, self.model_name, prompt, system_instruction=persona)
+        result_text = _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
         result_map = {item.link: result_text for item in top_items}
 
         if "에러" not in result_text and "❌" not in result_text:
@@ -190,4 +242,4 @@ class AIService:
             f"본문: {article.content[:800]}\n\n"
             "요약 / 핵심 이해관계자 / 숨겨진 시사점을 각 2문장으로 정리."
         )
-        return _call_gemini(self.api_key, self.model_name, prompt, system_instruction=persona)
+        return _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
