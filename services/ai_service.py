@@ -159,7 +159,8 @@ class AIService:
 
     def translate_nyt(self, raw_html: str, target_date: str) -> str:
         """NYT 번역 - GDrive 캐시로 당일 재호출 차단."""
-        cache_key = f"{target_date}_nyt_translation"
+        # 💡 [V8.1 Fix] V7.0에서 잘린 채 캐시된 데이터를 우회하기 위해 캐시 키 변경
+        cache_key = f"{target_date}_nyt_translation_full"
 
         cached = self._load_from_gdrive(cache_key)
         if cached:
@@ -169,7 +170,8 @@ class AIService:
             "너는 대한민국 최고 언론사의 20년 경력 베테랑 외신 특파원이야. "
             "NYT 'The Morning'을 국제 정세 맥락을 살려 우아하고 격조 있게 번역해."
         )
-        prompt = f"다음 본문을 한국인 정서에 맞게 번역해:\n\n{raw_html}"
+        # 💡 명시적으로 '누락 없이 끝까지' 번역하도록 프롬프트 강화
+        prompt = f"다음 본문을 처음부터 끝까지 단 하나의 단락도 누락하지 말고 전문을 한국인 정서에 맞게 번역해:\n\n{raw_html}"
 
         result = _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
         if "에러" not in result and "❌" not in result:
