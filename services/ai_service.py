@@ -169,7 +169,7 @@ class AIService:
             "너는 대한민국 최고 언론사의 20년 경력 베테랑 외신 특파원이야. "
             "NYT 'The Morning'을 국제 정세 맥락을 살려 우아하고 격조 있게 번역해."
         )
-        prompt = f"다음 본문을 한국인 정서에 맞게 번역해:\n\n{raw_html[:3000]}"
+        prompt = f"다음 본문을 한국인 정서에 맞게 번역해:\n\n{raw_html}"
 
         result = _call_ai_with_fallback(prompt, system_instruction=persona, initial_model=self.model_name)
         if "에러" not in result and "❌" not in result:

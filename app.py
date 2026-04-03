@@ -67,6 +67,10 @@ with tab1:
     def handle_nyt():
         with st.spinner("NYT 기사 수집 및 고품격 번역 중..."):
             raw_email = utils.fetch_nyt_newsletter()
+            
+            # 💡 [V8.1] 번역 전 원본 추출물 GDrive에 선업로드
+            storage_svc.upload_content_to_drive(raw_email, f"{target_date}_nyt_raw.txt")
+            
             # 💡 [V7.0] Pass target_date for persistent disk cache (quota saver)
             translated = ai_svc.translate_nyt(raw_email, target_date)
             st.session_state['nyt_text'], st.session_state['nyt_translation'] = raw_email, translated
